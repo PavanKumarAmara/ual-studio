@@ -1,0 +1,10 @@
+{
+  "name": "Remix UAL — Unified Agentic Layer",
+  "description": "Multi-tenant B2B chatbot-as-a-service platform on Google Cloud with PostgreSQL, public S3, and flat-file knowledge indexing, MCP tool connections, customizable chat themes, live endpoints, and embedded observability.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

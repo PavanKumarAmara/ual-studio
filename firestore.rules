@@ -1,0 +1,351 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidSlug(slug) {
+      return slug is string && slug.size() >= 2 && slug.size() <= 64 && slug.matches('^[a-z0-9\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOrgOwner(orgId) {
+      return exists(/databases/$(database)/documents/organizations/$(orgId)) &&
+        get(/databases/$(database)/documents/organizations/$(orgId)).data.ownerId == request.auth.uid;
+    }
+
+    function isProjectOwner(orgId, projectId) {
+      return isOrgOwner(orgId) &&
+        exists(/databases/$(database)/documents/organizations/$(orgId)/projects/$(projectId)) &&
+        get(/databases/$(database)/documents/organizations/$(orgId)/projects/$(projectId)).data.ownerId == request.auth.uid;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidOrganization(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'slug', 'industry', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerId', 'name', 'slug', 'industry', 'createdAt', 'updatedAt']) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        isValidSlug(data.slug) &&
+        data.industry is string && data.industry.size() <= 80 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTheme(theme) {
+      return theme is map &&
+        theme.keys().hasAll([
+          'primaryColor', 'surfaceColor', 'textColor', 'headerTitle',
+          'subtitle', 'welcomeMessage', 'position', 'borderRadius', 'starterPrompts'
+        ]) &&
+        theme.keys().hasOnly([
+          'primaryColor', 'surfaceColor', 'textColor', 'headerTitle',
+          'subtitle', 'welcomeMessage', 'position', 'borderRadius', 'starterPrompts',
+          'enableCustomerHistory', 'historyRetentionDays', 'enableVoiceMode', 'voiceName'
+        ]) &&
+        theme.primaryColor is string && theme.primaryColor.size() >= 4 && theme.primaryColor.size() <= 20 &&
+        theme.surfaceColor is string && theme.surfaceColor.size() >= 4 && theme.surfaceColor.size() <= 20 &&
+        theme.textColor is string && theme.textColor.size() >= 4 && theme.textColor.size() <= 20 &&
+        theme.headerTitle is string && theme.headerTitle.size() >= 1 && theme.headerTitle.size() <= 80 &&
+        theme.subtitle is string && theme.subtitle.size() <= 120 &&
+        theme.welcomeMessage is string && theme.welcomeMessage.size() <= 500 &&
+        theme.position in ['bottom-right', 'bottom-left'] &&
+        theme.borderRadius is number && theme.borderRadius >= 0 && theme.borderRadius <= 24 &&
+        theme.starterPrompts is list && theme.starterPrompts.size() <= 6 &&
+        (theme.starterPrompts.size() == 0 || (theme.starterPrompts[0] is string && theme.starterPrompts[0].size() <= 140)) &&
+        (!('enableCustomerHistory' in theme) || theme.enableCustomerHistory is bool) &&
+        (!('historyRetentionDays' in theme) || (theme.historyRetentionDays is number && theme.historyRetentionDays >= 1 && theme.historyRetentionDays <= 365)) &&
+        (!('enableVoiceMode' in theme) || theme.enableVoiceMode is bool) &&
+        (!('voiceName' in theme) || theme.voiceName in ['Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir']);
+    }
+
+    function isValidProject(data, orgId) {
+      return data.keys().hasAll([
+          'orgId', 'ownerId', 'name', 'slug', 'description', 'systemPrompt',
+          'knowledgeBrief', 'apiKey', 'status', 'theme', 'chunkCount', 'sourceCount',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'orgId', 'ownerId', 'name', 'slug', 'description', 'systemPrompt',
+          'knowledgeBrief', 'apiKey', 'status', 'theme', 'chunkCount', 'sourceCount',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.orgId == orgId &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        isValidSlug(data.slug) &&
+        data.description is string && data.description.size() <= 500 &&
+        data.systemPrompt is string && data.systemPrompt.size() <= 4000 &&
+        data.knowledgeBrief is string && data.knowledgeBrief.size() <= 6000 &&
+        data.apiKey is string && data.apiKey.size() >= 16 && data.apiKey.size() <= 120 &&
+        data.status in ['active', 'paused'] &&
+        isValidTheme(data.theme) &&
+        data.chunkCount is number && data.chunkCount >= 0 && data.chunkCount <= 50000 &&
+        data.sourceCount is number && data.sourceCount >= 0 && data.sourceCount <= 200 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDataSource(data, orgId, projectId) {
+      return data.keys().hasAll([
+          'orgId', 'projectId', 'ownerId', 'name', 'sourceType',
+          'configSummary', 'status', 'chunkCount', 'summary', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'orgId', 'projectId', 'ownerId', 'name', 'sourceType',
+          'configSummary', 'status', 'chunkCount', 'summary', 'createdAt', 'updatedAt'
+        ]) &&
+        data.orgId == orgId &&
+        data.projectId == projectId &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.sourceType in ['flatfile', 'postgres', 's3_public', 'website'] &&
+        data.configSummary is string && data.configSummary.size() <= 500 &&
+        data.status in ['indexed', 'syncing', 'error'] &&
+        data.chunkCount is number && data.chunkCount >= 0 && data.chunkCount <= 10000 &&
+        data.summary is string && data.summary.size() <= 2000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidKnowledgeChunk(data, orgId, projectId) {
+      return data.keys().hasAll([
+          'orgId', 'projectId', 'sourceId', 'ownerId', 'sourceName',
+          'content', 'tokenEstimate', 'embedding', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'orgId', 'projectId', 'sourceId', 'ownerId', 'sourceName',
+          'content', 'tokenEstimate', 'embedding', 'createdAt'
+        ]) &&
+        data.orgId == orgId &&
+        data.projectId == projectId &&
+        isValidId(data.sourceId) &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.sourceName is string && data.sourceName.size() >= 1 && data.sourceName.size() <= 120 &&
+        data.content is string && data.content.size() >= 1 && data.content.size() <= 8000 &&
+        data.tokenEstimate is number && data.tokenEstimate >= 0 && data.tokenEstimate <= 5000 &&
+        data.embedding is list && data.embedding.size() <= 1024 &&
+        (data.embedding.size() == 0 || data.embedding[0] is number) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidMcpConnection(data, orgId, projectId) {
+      return data.keys().hasAll([
+          'orgId', 'projectId', 'ownerId', 'name', 'endpointUrl', 'transport',
+          'authHeaderName', 'authTokenMasked', 'enabled', 'status', 'tools',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'orgId', 'projectId', 'ownerId', 'name', 'endpointUrl', 'transport',
+          'authHeaderName', 'authTokenMasked', 'enabled', 'status', 'tools',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.orgId == orgId &&
+        data.projectId == projectId &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.endpointUrl is string && data.endpointUrl.size() >= 1 && data.endpointUrl.size() <= 500 &&
+        data.transport in ['streamable_http', 'sse'] &&
+        data.authHeaderName is string && data.authHeaderName.size() <= 80 &&
+        data.authTokenMasked is string && data.authTokenMasked.size() <= 120 &&
+        data.enabled is bool &&
+        data.status in ['connected', 'disconnected', 'error'] &&
+        data.tools is list && data.tools.size() <= 50 &&
+        (data.tools.size() == 0 || data.tools[0] is map) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTraceLog(data, orgId, projectId) {
+      return data.keys().hasAll([
+          'orgId', 'projectId', 'ownerId', 'query', 'responsePreview',
+          'latencyMs', 'promptTokens', 'completionTokens', 'statusCode',
+          'channel', 'citations', 'mcpCalls', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'orgId', 'projectId', 'ownerId', 'query', 'responsePreview',
+          'latencyMs', 'promptTokens', 'completionTokens', 'statusCode',
+          'channel', 'citations', 'mcpCalls', 'createdAt'
+        ]) &&
+        data.orgId == orgId &&
+        data.projectId == projectId &&
+        isValidId(data.ownerId) &&
+        data.ownerId == request.auth.uid &&
+        data.query is string && data.query.size() >= 1 && data.query.size() <= 2000 &&
+        data.responsePreview is string && data.responsePreview.size() <= 2000 &&
+        data.latencyMs is number && data.latencyMs >= 0 && data.latencyMs <= 300000 &&
+        data.promptTokens is number && data.promptTokens >= 0 && data.promptTokens <= 500000 &&
+        data.completionTokens is number && data.completionTokens >= 0 && data.completionTokens <= 500000 &&
+        data.statusCode is number && data.statusCode >= 100 && data.statusCode <= 599 &&
+        data.channel in ['api', 'hosted', 'widget', 'playground'] &&
+        data.citations is list && data.citations.size() <= 10 &&
+        (data.citations.size() == 0 || (data.citations[0] is string && data.citations[0].size() <= 200)) &&
+        data.mcpCalls is list && data.mcpCalls.size() <= 10 &&
+        (data.mcpCalls.size() == 0 || (data.mcpCalls[0] is string && data.mcpCalls[0].size() <= 200)) &&
+        data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /organizations/{orgId} {
+      allow get: if isSignedIn() && isValidId(orgId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow create: if isVerifiedUser() &&
+        isValidId(orgId) &&
+        isValidOrganization(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(orgId) &&
+        isValidOrganization(incoming()) &&
+        existing().ownerId == request.auth.uid &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'slug', 'industry', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(orgId) && existing().ownerId == request.auth.uid;
+
+      match /projects/{projectId} {
+        allow get: if isSignedIn() && isValidId(orgId) && isValidId(projectId) &&
+          existing().ownerId == request.auth.uid && isOrgOwner(orgId);
+        allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+        allow create: if isVerifiedUser() &&
+          isValidId(orgId) && isValidId(projectId) &&
+          isValidProject(incoming(), orgId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isOrgOwner(orgId);
+        allow update: if isVerifiedUser() &&
+          isValidId(orgId) && isValidId(projectId) &&
+          isValidProject(incoming(), orgId) &&
+          existing().ownerId == request.auth.uid &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().orgId == existing().orgId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          isOrgOwner(orgId) &&
+          (
+            // Action: Update theme or prompt configuration
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'systemPrompt', 'theme', 'status', 'updatedAt']) ||
+            // Action: Rotate API key
+            incoming().diff(existing()).affectedKeys().hasOnly(['apiKey', 'updatedAt']) ||
+            // Action: Sync knowledge stats & brief
+            incoming().diff(existing()).affectedKeys().hasOnly(['knowledgeBrief', 'chunkCount', 'sourceCount', 'updatedAt'])
+          );
+        allow delete: if isVerifiedUser() && isValidId(orgId) && isValidId(projectId) &&
+          existing().ownerId == request.auth.uid && isOrgOwner(orgId);
+
+        match /sources/{sourceId} {
+          allow get: if isSignedIn() && isValidId(orgId) && isValidId(projectId) && isValidId(sourceId) &&
+            existing().ownerId == request.auth.uid && isProjectOwner(orgId, projectId);
+          allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+          allow create: if isVerifiedUser() &&
+            isValidId(orgId) && isValidId(projectId) && isValidId(sourceId) &&
+            isValidDataSource(incoming(), orgId, projectId) &&
+            incoming().createdAt == request.time &&
+            incoming().updatedAt == request.time &&
+            isProjectOwner(orgId, projectId);
+          allow update: if isVerifiedUser() &&
+            isValidId(orgId) && isValidId(projectId) && isValidId(sourceId) &&
+            isValidDataSource(incoming(), orgId, projectId) &&
+            existing().ownerId == request.auth.uid &&
+            incoming().ownerId == existing().ownerId &&
+            incoming().orgId == existing().orgId &&
+            incoming().projectId == existing().projectId &&
+            incoming().createdAt == existing().createdAt &&
+            incoming().updatedAt == request.time &&
+            isProjectOwner(orgId, projectId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'chunkCount', 'summary', 'configSummary', 'updatedAt']);
+          allow delete: if isVerifiedUser() && isValidId(orgId) && isValidId(projectId) && isValidId(sourceId) &&
+            existing().ownerId == request.auth.uid && isProjectOwner(orgId, projectId);
+        }
+
+        match /chunks/{chunkId} {
+          allow get: if isSignedIn() && isValidId(orgId) && isValidId(projectId) && isValidId(chunkId) &&
+            existing().ownerId == request.auth.uid && isProjectOwner(orgId, projectId);
+          allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+          allow create: if isVerifiedUser() &&
+            isValidId(orgId) && isValidId(projectId) && isValidId(chunkId) &&
+            isValidKnowledgeChunk(incoming(), orgId, projectId) &&
+            incoming().createdAt == request.time &&
+            isProjectOwner(orgId, projectId);
+          allow update: if false;
+          allow delete: if isVerifiedUser() && isValidId(orgId) && isValidId(projectId) && isValidId(chunkId) &&
+            existing().ownerId == request.auth.uid && isProjectOwner(orgId, projectId);
+        }
+
+        match /mcps/{mcpId} {
+          allow get: if isSignedIn() && isValidId(orgId) && isValidId(projectId) && isValidId(mcpId) &&
+            existing().ownerId == request.auth.uid && isProjectOwner(orgId, projectId);
+          allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+          allow create: if isVerifiedUser() &&
+            isValidId(orgId) && isValidId(projectId) && isValidId(mcpId) &&
+            isValidMcpConnection(incoming(), orgId, projectId) &&
+            incoming().createdAt == request.time &&
+            incoming().updatedAt == request.time &&
+            isProjectOwner(orgId, projectId);
+          allow update: if isVerifiedUser() &&
+            isValidId(orgId) && isValidId(projectId) && isValidId(mcpId) &&
+            isValidMcpConnection(incoming(), orgId, projectId) &&
+            existing().ownerId == request.auth.uid &&
+            incoming().ownerId == existing().ownerId &&
+            incoming().orgId == existing().orgId &&
+            incoming().projectId == existing().projectId &&
+            incoming().createdAt == existing().createdAt &&
+            incoming().updatedAt == request.time &&
+            isProjectOwner(orgId, projectId) &&
+            (
+              // Action: Toggle connection or tool allowlist
+              incoming().diff(existing()).affectedKeys().hasOnly(['enabled', 'tools', 'status', 'updatedAt']) ||
+              // Action: Edit endpoint configuration
+              incoming().diff(existing()).affectedKeys().hasOnly(['name', 'endpointUrl', 'transport', 'authHeaderName', 'authTokenMasked', 'updatedAt'])
+            );
+          allow delete: if isVerifiedUser() && isValidId(orgId) && isValidId(projectId) && isValidId(mcpId) &&
+            existing().ownerId == request.auth.uid && isProjectOwner(orgId, projectId);
+        }
+
+        match /traces/{traceId} {
+          allow get: if isSignedIn() && isValidId(orgId) && isValidId(projectId) && isValidId(traceId) &&
+            existing().ownerId == request.auth.uid && isProjectOwner(orgId, projectId);
+          allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+          allow create: if isVerifiedUser() &&
+            isValidId(orgId) && isValidId(projectId) && isValidId(traceId) &&
+            isValidTraceLog(incoming(), orgId, projectId) &&
+            incoming().createdAt == request.time &&
+            isProjectOwner(orgId, projectId);
+          allow update: if false;
+          allow delete: if isVerifiedUser() && isValidId(orgId) && isValidId(projectId) && isValidId(traceId) &&
+            existing().ownerId == request.auth.uid && isProjectOwner(orgId, projectId);
+        }
+      }
+    }
+  }
+}

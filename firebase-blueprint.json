@@ -1,0 +1,449 @@
+{
+  "entities": {
+    "Organization": {
+      "title": "Organization",
+      "description": "A registered B2B company workspace owned by an authenticated user.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the organization owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the company.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "slug": {
+          "type": "string",
+          "description": "URL-safe company slug for hosted chat URLs.",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9\\-]+$"
+        },
+        "industry": {
+          "type": "string",
+          "description": "Industry vertical of the company.",
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when organization was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when organization was last updated."
+        }
+      },
+      "required": ["ownerId", "name", "slug", "industry", "createdAt", "updatedAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "A provisioned chatbot service project inside an organization.",
+      "type": "object",
+      "properties": {
+        "orgId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9\\-]+$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "systemPrompt": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "knowledgeBrief": {
+          "type": "string",
+          "maxLength": 6000
+        },
+        "apiKey": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 120
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "paused"]
+        },
+        "theme": {
+          "type": "object",
+          "description": "Chat theme and customer experience configuration map (colors, header, starter prompts, enableCustomerHistory, historyRetentionDays, enableVoiceMode, voiceName)."
+        },
+        "chunkCount": {
+          "type": "number"
+        },
+        "sourceCount": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "orgId",
+        "ownerId",
+        "name",
+        "slug",
+        "description",
+        "systemPrompt",
+        "knowledgeBrief",
+        "apiKey",
+        "status",
+        "theme",
+        "chunkCount",
+        "sourceCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DataSource": {
+      "title": "DataSource",
+      "description": "A connected data source (flat file, PostgreSQL read-only URI, or public S3 folder) belonging to a project.",
+      "type": "object",
+      "properties": {
+        "orgId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "sourceType": {
+          "type": "string",
+          "enum": ["flatfile", "postgres", "s3_public", "website"]
+        },
+        "configSummary": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["indexed", "syncing", "error"]
+        },
+        "chunkCount": {
+          "type": "number"
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "orgId",
+        "projectId",
+        "ownerId",
+        "name",
+        "sourceType",
+        "configSummary",
+        "status",
+        "chunkCount",
+        "summary",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "KnowledgeChunk": {
+      "title": "KnowledgeChunk",
+      "description": "An indexed knowledge chunk extracted from a data source with optional compact vector embedding.",
+      "type": "object",
+      "properties": {
+        "orgId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sourceName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        },
+        "tokenEstimate": {
+          "type": "number"
+        },
+        "embedding": {
+          "type": "array",
+          "description": "Bounded numeric vector embedding."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "orgId",
+        "projectId",
+        "sourceId",
+        "ownerId",
+        "sourceName",
+        "content",
+        "tokenEstimate",
+        "embedding",
+        "createdAt"
+      ]
+    },
+    "McpConnection": {
+      "title": "McpConnection",
+      "description": "An MCP server connection configured for a chatbot project.",
+      "type": "object",
+      "properties": {
+        "orgId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "endpointUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "transport": {
+          "type": "string",
+          "enum": ["streamable_http", "sse"]
+        },
+        "authHeaderName": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "authTokenMasked": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["connected", "disconnected", "error"]
+        },
+        "tools": {
+          "type": "array",
+          "description": "Discovered MCP tool descriptors (max 50)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "orgId",
+        "projectId",
+        "ownerId",
+        "name",
+        "endpointUrl",
+        "transport",
+        "authHeaderName",
+        "authTokenMasked",
+        "enabled",
+        "status",
+        "tools",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "TraceLog": {
+      "title": "TraceLog",
+      "description": "An observability trace log recorded for a chatbot request.",
+      "type": "object",
+      "properties": {
+        "orgId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "responsePreview": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "latencyMs": {
+          "type": "number"
+        },
+        "promptTokens": {
+          "type": "number"
+        },
+        "completionTokens": {
+          "type": "number"
+        },
+        "statusCode": {
+          "type": "number"
+        },
+        "channel": {
+          "type": "string",
+          "enum": ["api", "hosted", "widget", "playground"]
+        },
+        "citations": {
+          "type": "array",
+          "description": "Retrieved knowledge source citations (max 10)."
+        },
+        "mcpCalls": {
+          "type": "array",
+          "description": "Executed MCP tool call summaries (max 10)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "orgId",
+        "projectId",
+        "ownerId",
+        "query",
+        "responsePreview",
+        "latencyMs",
+        "promptTokens",
+        "completionTokens",
+        "statusCode",
+        "channel",
+        "citations",
+        "mcpCalls",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/organizations/{orgId}": {
+      "schema": { "$ref": "#/entities/Organization" },
+      "description": "Company workspaces isolated per owner UID."
+    },
+    "/organizations/{orgId}/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Chatbot service projects within an organization."
+    },
+    "/organizations/{orgId}/projects/{projectId}/sources/{sourceId}": {
+      "schema": { "$ref": "#/entities/DataSource" },
+      "description": "Connected data sources (flat files, Postgres, public S3) for a project."
+    },
+    "/organizations/{orgId}/projects/{projectId}/chunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/KnowledgeChunk" },
+      "description": "Indexed knowledge chunks and embeddings for a project."
+    },
+    "/organizations/{orgId}/projects/{projectId}/mcps/{mcpId}": {
+      "schema": { "$ref": "#/entities/McpConnection" },
+      "description": "Connected MCP servers and discovered tools for a project."
+    },
+    "/organizations/{orgId}/projects/{projectId}/traces/{traceId}": {
+      "schema": { "$ref": "#/entities/TraceLog" },
+      "description": "Immutable observability trace logs for chatbot invocations."
+    }
+  }
+}
