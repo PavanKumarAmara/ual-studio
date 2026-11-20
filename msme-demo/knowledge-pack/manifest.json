@@ -1,0 +1,44 @@
+[
+  {
+    "file": "company-faq.txt",
+    "title": "Company FAQ",
+    "version": "2026-11-20",
+    "website_path": "/help/company-faq",
+    "visibility": "company-public"
+  },
+  {
+    "file": "product-guide.txt",
+    "title": "Product guide",
+    "version": "2026-11-20",
+    "website_path": "/help/product-guide",
+    "visibility": "company-public"
+  },
+  {
+    "file": "delivery-policy.txt",
+    "title": "Delivery policy",
+    "version": "2026-11-20",
+    "website_path": "/help/delivery-policy",
+    "visibility": "company-public"
+  },
+  {
+    "file": "returns-policy.txt",
+    "title": "Returns & damage",
+    "version": "2026-11-20",
+    "website_path": "/help/returns-policy",
+    "visibility": "company-public"
+  },
+  {
+    "file": "bulk-ordering.txt",
+    "title": "Bulk orders & minimums",
+    "version": "2026-11-20",
+    "website_path": "/help/bulk-ordering",
+    "visibility": "company-public"
+  },
+  {
+    "file": "payment-terms.txt",
+    "title": "Payments & invoices",
+    "version": "2026-11-20",
+    "website_path": "/help/payment-terms",
+    "visibility": "company-public"
+  }
+]

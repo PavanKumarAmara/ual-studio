@@ -1,0 +1,6 @@
+NilaPack Supplies
+Company FAQ
+Version: 2026-11-20
+Public company knowledge — fictional demo business.
+
+NilaPack Supplies is a fictional packaging MSME based in Bengaluru. We supply shipping boxes, mailers, retail bags, takeaway packaging and packing essentials to small businesses. This is a demonstration website; we do not accept real orders or payments. Business hours are Monday–Saturday, 9:00 am–6:00 pm IST. Contact hello@nilapack.example is a fictional demo email. Customers can review seeded orders and invoices in their account. No real certification is claimed. Product material suitability must be checked for the intended use.

@@ -1,0 +1,6 @@
+NilaPack Supplies
+Payments & invoices
+Version: 2026-11-20
+Public company knowledge — fictional demo business.
+
+Catalogue prices are indicative INR prices excluding shipping and illustrative tax. The seeded invoices use 18% illustrative GST for arithmetic demonstrations only and are not valid tax invoices. Standard accounts use advance payment; approved business accounts may have net-15 or net-30 terms stated on their invoice. Due date and payment allocations on the individual invoice take precedence over general terms. Outstanding balance equals invoice total minus recorded payments. Paid means the balance is zero. Overdue means there is a positive balance after the due date. The chatbot may read payment status but never collects payment, changes bank details or marks an invoice paid. No real bank account or GST registration is provided.
