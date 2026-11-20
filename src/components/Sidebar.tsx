@@ -7,6 +7,7 @@ import {
   Plug,
   Plus,
   Building2,
+  Store,
 } from 'lucide-react';
 import type { Organization, Project } from '../types';
 
@@ -15,6 +16,7 @@ export type WorkspaceTab =
   | 'connectors'
   | 'mcp'
   | 'theme'
+  | 'storepage'
   | 'observability'
   | 'gcp';
 
@@ -36,6 +38,7 @@ const NAV_ITEMS: Array<{ id: WorkspaceTab; label: string; icon: typeof LayoutGri
   { id: 'connectors', label: 'Data & Knowledge', icon: Database },
   { id: 'mcp', label: 'MCP Servers', icon: Plug },
   { id: 'theme', label: 'Theme & Embed', icon: Palette },
+  { id: 'storepage', label: 'Store Page', icon: Store },
   { id: 'observability', label: 'Observability & Insights', icon: Activity },
   { id: 'gcp', label: 'GCP Architecture', icon: Cloud },
 ];

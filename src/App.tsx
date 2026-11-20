@@ -13,6 +13,8 @@ import {
   fetchUserOrganizations,
   updateMcpConnectionStateDoc,
   updateProjectApiKeyDoc,
+  updateProjectIdentityDoc,
+  updateProjectStorePageDoc,
   updateProjectConfigDoc,
   updateProjectKnowledgeStatsDoc,
 } from './lib/firestoreRepo';
@@ -36,6 +38,7 @@ import type {
   Organization,
   Project,
   SourceType,
+  StorePage,
   TraceLog,
 } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -51,9 +54,20 @@ import { ThemeStudioTab } from './components/ThemeStudioTab';
 import { ObservabilityTab } from './components/ObservabilityTab';
 import { GcpArchitectureTab } from './components/GcpArchitectureTab';
 import { HostedChatPage } from './components/HostedChatPage';
+import { StorePageView } from './components/StorePageView';
+import { StorePageTab } from './components/StorePageTab';
 
 function parseHostedRoute(pathname: string): { orgSlug: string; botSlug: string } | null {
   const match = /^\/c\/([^/]+)\/([^/]+)\/?$/.exec(pathname);
+  if (!match) return null;
+  return {
+    orgSlug: decodeURIComponent(match[1]),
+    botSlug: decodeURIComponent(match[2]),
+  };
+}
+
+function parseStoreRoute(pathname: string): { orgSlug: string; botSlug: string } | null {
+  const match = /^\/s\/([^/]+)\/([^/]+)\/?$/.exec(pathname);
   if (!match) return null;
   return {
     orgSlug: decodeURIComponent(match[1]),
@@ -116,6 +130,7 @@ function RelayMeshApp() {
   const [refreshingTraces, setRefreshingTraces] = useState(false);
 
   const hostedRoute = useMemo(() => parseHostedRoute(pathname), [pathname]);
+  const storeRoute = useMemo(() => parseStoreRoute(pathname), [pathname]);
 
   useEffect(() => {
     const onPop = () => setPathname(window.location.pathname);
@@ -235,7 +250,7 @@ function RelayMeshApp() {
     [projectMcps]
   );
 
-  // Sync active bot snapshot to Express runtime so /api/v1/bots/:slug/chat, /c/:org/:bot, and /embed/:slug.js stay live
+  // Sync active bot snapshot to Express runtime so /api/v1/bots/:org/:bot/chat, /c/:org/:bot, and /embed/:org/:bot.js stay live
   useEffect(() => {
     if (!activeOrg || !activeProject) return;
     fetch('/api/runtime/sync', {
@@ -252,10 +267,10 @@ function RelayMeshApp() {
   }, [activeOrg, activeProject, projectChunks, projectMcps]);
 
   const refreshServerTraces = useCallback(async () => {
-    if (!activeProject) return;
+    if (!activeOrg || !activeProject) return;
     setRefreshingTraces(true);
     try {
-      const res = await fetch(`/api/runtime/traces/${encodeURIComponent(activeProject.slug)}`);
+      const res = await fetch(`/api/runtime/traces/${encodeURIComponent(activeOrg.slug)}/${encodeURIComponent(activeProject.slug)}`);
       const data = await res.json();
       if (Array.isArray(data.traces)) {
         setTraces((prev) => {
@@ -267,7 +282,7 @@ function RelayMeshApp() {
     } finally {
       setRefreshingTraces(false);
     }
-  }, [activeProject]);
+  }, [activeOrg, activeProject]);
 
   useEffect(() => {
     if (activeTab === 'observability') {
@@ -334,6 +349,8 @@ function RelayMeshApp() {
       systemPrompt: `You are ${data.firstBotName} for ${data.companyName}. Answer customer questions clearly using connected knowledge sources and live MCP tools.`,
       knowledgeBrief: '',
       apiKey: generateApiKey(),
+      identitySecret: generateApiKey('idsec'),
+      loginUrl: '',
       status: 'active',
       theme: {
         primaryColor: '#2563EB',
@@ -385,6 +402,7 @@ function RelayMeshApp() {
       orgId: starterOrg.id,
       ownerId,
       apiKey: generateApiKey(),
+      identitySecret: generateApiKey('idsec'),
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -525,6 +543,8 @@ function RelayMeshApp() {
       systemPrompt: data.systemPrompt,
       knowledgeBrief: '',
       apiKey: generateApiKey(),
+      identitySecret: generateApiKey('idsec'),
+      loginUrl: '',
       status: 'active',
       theme: {
         primaryColor: '#2563EB',
@@ -558,6 +578,29 @@ function RelayMeshApp() {
     }
     setProjects((prev) =>
       prev.map((p) => (p.id === activeProject.id ? { ...p, apiKey: nextKey } : p))
+    );
+  };
+
+  // Backfill identity secrets for bots created before customer identity verification existed
+  useEffect(() => {
+    const missing = projects.filter((p) => !p.identitySecret);
+    if (missing.length === 0) return;
+    const patched = missing.map((p) => ({ ...p, identitySecret: generateApiKey('idsec'), loginUrl: p.loginUrl ?? '' }));
+    setProjects((prev) => prev.map((p) => patched.find((x) => x.id === p.id) ?? p));
+    if (user) {
+      for (const p of patched) {
+        void updateProjectIdentityDoc(p.orgId, p.id, { identitySecret: p.identitySecret, loginUrl: p.loginUrl });
+      }
+    }
+  }, [projects, user]);
+
+  const handleSaveIdentity = async (patch: { identitySecret: string; loginUrl: string }) => {
+    if (!activeOrg || !activeProject) return;
+    if (user) {
+      await updateProjectIdentityDoc(activeOrg.id, activeProject.id, patch);
+    }
+    setProjects((prev) =>
+      prev.map((p) => (p.id === activeProject.id ? { ...p, ...patch } : p))
     );
   };
 
@@ -727,6 +770,16 @@ function RelayMeshApp() {
     setMcps((prev) => prev.filter((m) => m.id !== mcpId));
   };
 
+  const handleSaveStorePage = async (page: StorePage) => {
+    if (!activeOrg || !activeProject) return;
+    if (user) {
+      await updateProjectStorePageDoc(activeOrg.id, activeProject.id, page);
+    }
+    setProjects((prev) =>
+      prev.map((p) => (p.id === activeProject.id ? { ...p, storePage: page } : p))
+    );
+  };
+
   const handleRecordTrace = useCallback(
     (trace: TraceLog) => {
       setTraces((prev) => {
@@ -755,6 +808,11 @@ function RelayMeshApp() {
         onBackToConsole={() => navigate('/')}
       />
     );
+  }
+
+  // Route 1b: Public Hosted Store Page (/s/:orgSlug/:botSlug)
+  if (storeRoute) {
+    return <StorePageView orgSlug={storeRoute.orgSlug} botSlug={storeRoute.botSlug} />;
   }
 
   // Route 2: Checking Firebase Auth state (never flash foreign workspace data)
@@ -861,6 +919,7 @@ function RelayMeshApp() {
                   traceCount={projectTraces.length}
                   onRotateKey={handleRotateKey}
                   onSavePrompt={handleSavePrompt}
+                  onSaveIdentity={handleSaveIdentity}
                   onRecordTrace={handleRecordTrace}
                 />
               )}
@@ -890,6 +949,14 @@ function RelayMeshApp() {
                   onSaveTheme={handleSaveTheme}
                   onRecordTrace={handleRecordTrace}
                   onOpenHostedChat={() => navigate(`/c/${activeOrg.slug}/${activeProject.slug}`)}
+                />
+              )}
+
+              {activeTab === 'storepage' && (
+                <StorePageTab
+                  org={activeOrg}
+                  project={activeProject}
+                  onSavePage={handleSaveStorePage}
                 />
               )}
 

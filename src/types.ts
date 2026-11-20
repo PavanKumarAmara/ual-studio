@@ -49,8 +49,11 @@ export interface Project {
   systemPrompt: string;
   knowledgeBrief: string;
   apiKey: string;
+  identitySecret: string;
+  loginUrl: string;
   status: 'active' | 'paused';
   theme: ChatTheme;
+  storePage?: StorePage;
   chunkCount: number;
   sourceCount: number;
   createdAt: string;
@@ -90,6 +93,46 @@ export interface McpTool {
   description: string;
   inputSchema: Record<string, unknown>;
   enabled: boolean;
+  requiresCustomerIdentity?: boolean;
+}
+
+export interface CustomerIdentityClaim {
+  customerId: string;
+  sig: string;
+  ts: number;
+}
+
+export interface LoginRequiredSignal {
+  loginUrl: string;
+  toolName: string;
+}
+
+export type StoreSectionType = 'hero' | 'about' | 'services' | 'gallery' | 'hours' | 'contact';
+
+export interface StorePageItem {
+  title: string;
+  subtitle: string;
+  price: string;
+  imageUrl: string;
+}
+
+export interface StorePageSection {
+  id: string;
+  type: StoreSectionType;
+  enabled: boolean;
+  heading: string;
+  body: string;
+  imageUrl: string;
+  items: StorePageItem[];
+}
+
+export interface StorePage {
+  published: boolean;
+  title: string;
+  tagline: string;
+  logoUrl: string;
+  primaryColor: string;
+  sections: StorePageSection[];
 }
 
 export interface McpConnection {
@@ -149,6 +192,7 @@ export interface ChatTurnMessage {
   }>;
   latencyMs?: number;
   tokens?: number;
+  loginRequired?: LoginRequiredSignal;
 }
 
 export interface ProductInsightTheme {

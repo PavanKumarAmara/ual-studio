@@ -192,14 +192,14 @@ export function LandingPage({ authLoading, authError, onSignIn }: LandingPagePro
                       <div className="space-y-1">
                         <p className="text-xs font-medium text-slate-500">Drop-in Website Widget</p>
                         <pre className="p-3.5 bg-slate-900 text-slate-100 rounded-lg font-mono text-[11px] whitespace-pre-wrap break-all leading-relaxed">
-                          {`<script src="https://chat.acme.io/embed/support-bot.js" async></script>`}
+                          {`<script src="https://chat.acme.io/embed/acme/support-bot.js" async></script>`}
                         </pre>
                       </div>
 
                       <div className="space-y-1">
                         <p className="text-xs font-medium text-slate-500">Authenticated REST Endpoint</p>
                         <div className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs text-slate-800 truncate">
-                          POST /api/v1/bots/support-bot/chat · Authorization: Bearer sk_live_••••
+                          POST /api/v1/bots/acme/support-bot/chat · Authorization: Bearer sk_live_••••
                         </div>
                       </div>
                     </div>
@@ -350,11 +350,11 @@ export function LandingPage({ authLoading, authError, onSignIn }: LandingPagePro
                   </div>
                   <div>
                     <p className="font-semibold text-slate-900">Widget Script</p>
-                    <p className="text-slate-500 font-mono mt-0.5">/embed/bot.js</p>
+                    <p className="text-slate-500 font-mono mt-0.5">/embed/org/bot.js</p>
                   </div>
                   <div>
                     <p className="font-semibold text-slate-900">REST Endpoint</p>
-                    <p className="text-slate-500 font-mono mt-0.5">/api/v1/bots/chat</p>
+                    <p className="text-slate-500 font-mono mt-0.5">/api/v1/bots/org/bot/chat</p>
                   </div>
                 </div>
               </article>

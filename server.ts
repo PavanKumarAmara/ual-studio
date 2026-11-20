@@ -17,10 +17,10 @@ import {
   ingestWebsiteSource,
 } from './server/connectors.ts';
 import { discoverMcpTools, handleDemoMcpJsonRpc } from './server/mcp.ts';
+import { verifyCustomerIdentity } from './server/identity.ts';
 import {
   appendRuntimeTrace,
   getBotByOrgAndSlug,
-  getBotBySlug,
   getRuntimeTraces,
   listRuntimeBots,
   syncBotSnapshot,
@@ -74,8 +74,8 @@ async function startServer() {
     res.json({ ok: true, slug: snapshot.project.slug });
   });
 
-  app.get('/api/runtime/traces/:botSlug', (req, res) => {
-    res.json({ traces: getRuntimeTraces(req.params.botSlug) });
+  app.get('/api/runtime/traces/:orgSlug/:botSlug', (req, res) => {
+    res.json({ traces: getRuntimeTraces(req.params.orgSlug, req.params.botSlug) });
   });
 
   // 3. Public Safe Bot Config (for Hosted Chat URL /c/:orgSlug/:botSlug & Embed Widget — never leaks API keys)
@@ -104,14 +104,30 @@ async function startServer() {
     });
   });
 
+  // 3b. Public Store Page Config (hosted storefront /s/:orgSlug/:botSlug — safe fields only)
+  app.get('/api/public/pages/:orgSlug/:botSlug', (req, res) => {
+    const bot = getBotByOrgAndSlug(req.params.orgSlug, req.params.botSlug);
+    if (!bot || !bot.project.storePage?.published) {
+      res.status(404).json({ error: 'Store page not found or not published.' });
+      return;
+    }
+    res.json({
+      orgSlug: bot.orgSlug,
+      orgName: bot.orgName,
+      botSlug: bot.project.slug,
+      page: bot.project.storePage,
+      chatEnabled: bot.project.status === 'active',
+    });
+  });
+
   // 4. Generated Production Chatbot Endpoint
-  app.post('/api/v1/bots/:botSlug/chat', async (req, res) => {
+  app.post('/api/v1/bots/:orgSlug/:botSlug/chat', async (req, res) => {
     const started = Date.now();
-    const botSlug = req.params.botSlug;
-    const bot = getBotBySlug(botSlug);
+    const { orgSlug, botSlug } = req.params;
+    const bot = getBotByOrgAndSlug(orgSlug, botSlug);
 
     if (!bot) {
-      res.status(404).json({ error: `Chatbot endpoint "${botSlug}" does not exist.` });
+      res.status(404).json({ error: `Chatbot endpoint "${orgSlug}/${botSlug}" does not exist.` });
       return;
     }
 
@@ -147,7 +163,7 @@ async function startServer() {
           mcpCalls: [],
           createdAt: new Date().toISOString(),
         };
-        appendRuntimeTrace(botSlug, failedTrace);
+        appendRuntimeTrace(orgSlug, botSlug, failedTrace);
         res.status(401).json({ error: 'Unauthorized: Provide Authorization: Bearer <project_api_key>.' });
         return;
       }
@@ -164,6 +180,15 @@ async function startServer() {
     }
 
     try {
+      const rawIdentity = req.body?.customerIdentity;
+      const identity = rawIdentity && typeof rawIdentity === 'object'
+        ? verifyCustomerIdentity(bot.project.identitySecret ?? '', {
+            customerId: String(rawIdentity.customerId ?? ''),
+            sig: String(rawIdentity.sig ?? ''),
+            ts: Number(rawIdentity.ts ?? 0),
+          })
+        : { valid: false, customerId: null };
+
       const hasEmbeddedChunks = bot.chunks.some((c) => c.embedding.length > 0);
       const queryEmbedding = hasEmbeddedChunks ? (await embedTexts([message], 2500))[0] ?? [] : [];
       const retrieved = rankChunks(message, queryEmbedding, bot.chunks, 5);
@@ -177,6 +202,8 @@ async function startServer() {
         retrievedChunks: retrieved,
         mcps: bot.mcps,
         serverBaseUrl,
+        verifiedCustomerId: identity.valid ? identity.customerId : null,
+        loginUrl: bot.project.loginUrl ?? '',
       });
 
       const latencyMs = Date.now() - started;
@@ -198,12 +225,13 @@ async function startServer() {
           .slice(0, 10),
         createdAt: new Date().toISOString(),
       };
-      appendRuntimeTrace(botSlug, trace);
+      appendRuntimeTrace(orgSlug, botSlug, trace);
 
       res.json({
         reply: result.reply,
         citations: result.citations,
         mcpCalls: result.mcpCalls,
+        loginRequired: result.loginRequired,
         usage: {
           promptTokens: result.promptTokens,
           completionTokens: result.completionTokens,
@@ -231,17 +259,17 @@ async function startServer() {
         mcpCalls: [],
         createdAt: new Date().toISOString(),
       };
-      appendRuntimeTrace(botSlug, errTrace);
+      appendRuntimeTrace(orgSlug, botSlug, errTrace);
       res.status(500).json({ error: errorMessage, trace: errTrace });
     }
   });
 
-  // 5. Embeddable Floating Widget Script (/embed/:botSlug.js)
-  app.get('/embed/:botSlug.js', (req, res) => {
-    const botSlug = req.params.botSlug;
-    const bot = getBotBySlug(botSlug);
+  // 5. Embeddable Floating Widget Script (/embed/:orgSlug/:botSlug.js)
+  app.get('/embed/:orgSlug/:botSlug.js', (req, res) => {
+    const { orgSlug, botSlug } = req.params;
+    const bot = getBotByOrgAndSlug(orgSlug, botSlug);
     if (!bot) {
-      res.type('application/javascript').status(404).send(`console.error("UAL: Bot ${botSlug} not found.");`);
+      res.type('application/javascript').status(404).send(`console.error("UAL: Bot ${orgSlug}/${botSlug} not found.");`);
       return;
     }
 
@@ -253,11 +281,13 @@ async function startServer() {
     const allowMicAttr = bot.project.theme.enableVoiceMode ? `frame.allow = 'microphone';\n  ` : '';
 
     const script = `(function(){
-  if (window.__relayMeshLoaded_${botSlug.replace(/[^a-zA-Z0-9]/g, '_')}) return;
-  window.__relayMeshLoaded_${botSlug.replace(/[^a-zA-Z0-9]/g, '_')} = true;
+  if (window.__relayMeshLoaded_${orgSlug.replace(/[^a-zA-Z0-9]/g, '_')}_${botSlug.replace(/[^a-zA-Z0-9]/g, '_')}) return;
+  window.__relayMeshLoaded_${orgSlug.replace(/[^a-zA-Z0-9]/g, '_')}_${botSlug.replace(/[^a-zA-Z0-9]/g, '_')} = true;
   var cur = document.currentScript;
   var cid = cur && cur.getAttribute ? cur.getAttribute('data-customer-id') : '';
-  var srcUrl = ${JSON.stringify(chatUrl)} + (cid ? '&customerId=' + encodeURIComponent(cid) : '');
+  var csig = cur && cur.getAttribute ? cur.getAttribute('data-customer-sig') : '';
+  var cts = cur && cur.getAttribute ? cur.getAttribute('data-customer-ts') : '';
+  var srcUrl = ${JSON.stringify(chatUrl)} + (cid ? '&customerId=' + encodeURIComponent(cid) : '') + (csig ? '&sig=' + encodeURIComponent(csig) : '') + (cts ? '&ts=' + encodeURIComponent(cts) : '');
   var btn = document.createElement('button');
   btn.setAttribute('aria-label', ${JSON.stringify(bot.project.theme.headerTitle)});
   btn.textContent = 'Chat';

@@ -37,6 +37,8 @@ export const SEED_PROJECTS: Project[] = [
     knowledgeBrief:
       'Indexed 3 enterprise sources: PostgreSQL logistics schema (shipments, sla_contracts), public S3 freight SOPs (EU/US customs clearance & cold-chain handling), and flat-file pricing/zone schedule. Ready to answer customs, detention fee, cold-chain temperature, and SLA escalation inquiries, plus live tool execution via Meridian Operations MCP.',
     apiKey: 'sk_live_rm_meridian_freight_9k4x2p8v7n1q',
+    identitySecret: 'idsec_meridian_freight_demo_7f3k9q2x5v8n',
+    loginUrl: 'https://meridian-logistics.example.com/login',
     status: 'active',
     theme: {
       primaryColor: '#2563EB',
@@ -75,6 +77,8 @@ export const SEED_PROJECTS: Project[] = [
     knowledgeBrief:
       'Indexed Partner Webhook Reference (Markdown) covering HMAC-SHA256 signature verification, exponential retry schedules, and rate-limit headers.',
     apiKey: 'sk_live_rm_meridian_partner_3m7c5r2t8w4y',
+    identitySecret: 'idsec_meridian_partner_demo_2w6m8r4t1y9p',
+    loginUrl: '',
     status: 'active',
     theme: {
       primaryColor: '#0F172A',
@@ -293,6 +297,7 @@ export const SEED_MCPS: McpConnection[] = [
           required: ['company_code'],
         },
         enabled: true,
+        requiresCustomerIdentity: true,
       },
       {
         name: 'create_support_ticket',

@@ -8,6 +8,7 @@ import {
   Send,
 } from 'lucide-react';
 import type { ChatTurnMessage, Organization, Project, TraceLog } from '../types';
+import { generateApiKey } from '../utils/ingestion';
 
 interface OverviewTabProps {
   org: Organization;
@@ -16,6 +17,7 @@ interface OverviewTabProps {
   traceCount: number;
   onRotateKey: () => Promise<void>;
   onSavePrompt: (systemPrompt: string, status: 'active' | 'paused') => Promise<void>;
+  onSaveIdentity: (patch: { identitySecret: string; loginUrl: string }) => Promise<void>;
   onRecordTrace: (trace: TraceLog) => void;
 }
 
@@ -26,14 +28,19 @@ export function OverviewTab({
   traceCount,
   onRotateKey,
   onSavePrompt,
+  onSaveIdentity,
   onRecordTrace,
 }: OverviewTabProps) {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-service.run.app';
   const hostedUrl = `${origin}/c/${org.slug}/${project.slug}`;
-  const apiEndpoint = `${origin}/api/v1/bots/${project.slug}/chat`;
-  const embedScript = `<script src="${origin}/embed/${project.slug}.js" async></script>`;
+  const apiEndpoint = `${origin}/api/v1/bots/${org.slug}/${project.slug}/chat`;
+  const embedScript = `<script src="${origin}/embed/${org.slug}/${project.slug}.js" async></script>`;
 
   const [showKey, setShowKey] = useState(false);
+  const [showIdentitySecret, setShowIdentitySecret] = useState(false);
+  const [loginUrlInput, setLoginUrlInput] = useState(project.loginUrl ?? '');
+  const [savingIdentity, setSavingIdentity] = useState(false);
+  const [identityNotice, setIdentityNotice] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [snippetLang, setSnippetLang] = useState<'curl' | 'node' | 'python'>('curl');
   const [systemPrompt, setSystemPrompt] = useState(project.systemPrompt);
@@ -54,7 +61,9 @@ export function OverviewTab({
     setStatus(project.status);
     setTestMessages([]);
     setTestError('');
-  }, [project.id, project.systemPrompt, project.status]);
+    setLoginUrlInput(project.loginUrl ?? '');
+    setIdentityNotice('');
+  }, [project.id, project.systemPrompt, project.status, project.loginUrl]);
 
   const copyText = async (id: string, value: string) => {
     try {
@@ -97,7 +106,7 @@ export function OverviewTab({
     setTesting(true);
 
     try {
-      const res = await fetch(`/api/v1/bots/${project.slug}/chat`, {
+      const res = await fetch(`/api/v1/bots/${org.slug}/${project.slug}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -134,6 +143,28 @@ export function OverviewTab({
   };
 
   const maskedKey = `${project.apiKey.slice(0, 14)}${'•'.repeat(20)}`;
+
+  const handleSaveIdentity = async (identitySecret: string) => {
+    setSavingIdentity(true);
+    setIdentityNotice('');
+    try {
+      await onSaveIdentity({ identitySecret, loginUrl: loginUrlInput.trim() });
+      setIdentityNotice('Identity settings saved.');
+    } catch {
+      setIdentityNotice('Failed to save identity settings.');
+    } finally {
+      setSavingIdentity(false);
+    }
+  };
+
+  const identitySnippet = `// On YOUR backend, after the customer logs in:
+const crypto = require('crypto');
+const ts = Date.now();
+const sig = crypto.createHmac('sha256', '${showIdentitySecret ? project.identitySecret : 'YOUR_IDENTITY_SECRET'}')
+  .update(customerId + '.' + ts).digest('hex');
+// Render the widget with the signed identity:
+// <script src="${origin}/embed/${org.slug}/${project.slug}.js"
+//   data-customer-id="\${customerId}" data-customer-sig="\${sig}" data-customer-ts="\${ts}" async></script>`;
 
   const snippets = {
     curl: `curl -X POST "${apiEndpoint}" \\
@@ -313,6 +344,88 @@ print(resp.json())`,
                   {copiedField === 'key' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                   {copiedField === 'key' ? 'Copied' : 'Copy'}
                 </button>
+              </div>
+            </div>
+
+            {/* Customer Identity Verification (HMAC) */}
+            <div className="p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-medium text-slate-600">Customer Identity Secret (HMAC-SHA256)</span>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Your backend signs the logged-in customer ID with this secret. Tools marked "Requires sign-in" in the MCP tab only run for verified customers.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSaveIdentity(generateApiKey('idsec'))}
+                  disabled={savingIdentity}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900 shrink-0"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${savingIdentity ? 'animate-spin' : ''}`} />
+                  Rotate secret
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 truncate">
+                  {showIdentitySecret ? project.identitySecret : `${(project.identitySecret || '').slice(0, 10)}${'•'.repeat(20)}`}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => setShowIdentitySecret((prev) => !prev)}
+                  aria-label={showIdentitySecret ? 'Hide identity secret' : 'Reveal identity secret'}
+                  className="p-2 text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shrink-0"
+                >
+                  {showIdentitySecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyText('idsecret', project.identitySecret)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 whitespace-nowrap shrink-0"
+                >
+                  {copiedField === 'idsecret' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedField === 'idsecret' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium text-slate-600">Your Customer Login URL</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="url"
+                    value={loginUrlInput}
+                    onChange={(e) => setLoginUrlInput(e.target.value)}
+                    placeholder="https://your-site.com/login"
+                    className="flex-1 text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveIdentity(project.identitySecret)}
+                    disabled={savingIdentity}
+                    className="px-3 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap shrink-0"
+                  >
+                    {savingIdentity ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Anonymous visitors keep chatting normally. When a question needs their private data, the widget shows a sign-in button pointing here.
+                </p>
+                {identityNotice && <p className="text-xs text-emerald-700">{identityNotice}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-600">Backend Signing Example</span>
+                  <button
+                    type="button"
+                    onClick={() => copyText('idsnippet', identitySnippet)}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    {copiedField === 'idsnippet' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedField === 'idsnippet' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <pre className="bg-slate-900 text-slate-100 text-xs font-mono p-3 rounded-lg overflow-x-auto leading-relaxed">
+                  <code>{identitySnippet}</code>
+                </pre>
               </div>
             </div>
 

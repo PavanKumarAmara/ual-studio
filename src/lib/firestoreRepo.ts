@@ -18,6 +18,7 @@ import type {
   McpConnection,
   Organization,
   Project,
+  StorePage,
   TraceLog,
 } from '../types';
 import { normalizeVoiceName } from '../utils/voiceAudio';
@@ -87,6 +88,9 @@ export async function fetchOrgProjects(orgId: string, uid: string): Promise<Proj
         systemPrompt: String(data.systemPrompt ?? ''),
         knowledgeBrief: String(data.knowledgeBrief ?? ''),
         apiKey: String(data.apiKey ?? ''),
+        identitySecret: String(data.identitySecret ?? ''),
+        loginUrl: String(data.loginUrl ?? ''),
+        storePage: data.storePage ?? undefined,
         status: data.status === 'paused' ? 'paused' : 'active',
         theme: {
           ...data.theme,
@@ -118,6 +122,8 @@ export async function createProjectDoc(project: Project): Promise<void> {
       systemPrompt: clampStr(project.systemPrompt, 4000),
       knowledgeBrief: clampStr(project.knowledgeBrief, 6000),
       apiKey: clampStr(project.apiKey, 120),
+      identitySecret: clampStr(project.identitySecret, 120),
+      loginUrl: clampStr(project.loginUrl, 500),
       status: project.status,
       theme: {
         primaryColor: clampStr(project.theme.primaryColor, 20),
@@ -183,6 +189,55 @@ export async function updateProjectApiKeyDoc(orgId: string, projectId: string, a
   try {
     await updateDoc(doc(db, 'organizations', orgId, 'projects', projectId), {
       apiKey: clampStr(apiKey, 120),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
+export async function updateProjectIdentityDoc(
+  orgId: string,
+  projectId: string,
+  patch: { identitySecret: string; loginUrl: string }
+): Promise<void> {
+  const path = `organizations/${orgId}/projects/${projectId}`;
+  try {
+    await updateDoc(doc(db, 'organizations', orgId, 'projects', projectId), {
+      identitySecret: clampStr(patch.identitySecret, 120),
+      loginUrl: clampStr(patch.loginUrl, 500),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
+export async function updateProjectStorePageDoc(orgId: string, projectId: string, page: StorePage): Promise<void> {
+  const path = `organizations/${orgId}/projects/${projectId}`;
+  try {
+    await updateDoc(doc(db, 'organizations', orgId, 'projects', projectId), {
+      storePage: {
+        published: Boolean(page.published),
+        title: clampStr(page.title, 100),
+        tagline: clampStr(page.tagline, 200),
+        logoUrl: clampStr(page.logoUrl, 500),
+        primaryColor: clampStr(page.primaryColor, 20),
+        sections: (page.sections ?? []).slice(0, 10).map((s) => ({
+          id: clampStr(s.id, 64),
+          type: s.type,
+          enabled: Boolean(s.enabled),
+          heading: clampStr(s.heading, 120),
+          body: clampStr(s.body, 2000),
+          imageUrl: clampStr(s.imageUrl, 500),
+          items: (s.items ?? []).slice(0, 12).map((it) => ({
+            title: clampStr(it.title, 120),
+            subtitle: clampStr(it.subtitle, 300),
+            price: clampStr(it.price, 40),
+            imageUrl: clampStr(it.imageUrl, 500),
+          })),
+        })),
+      },
       updatedAt: serverTimestamp(),
     });
   } catch (err) {

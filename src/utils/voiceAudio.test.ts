@@ -18,14 +18,14 @@ test('normalizeVoiceName validates allowlist and defaults to Zephyr', () => {
   assert.equal(normalizeVoiceName(undefined), 'Zephyr');
 });
 
-test('buildLiveWsUrl selects ws vs wss and encodes bot slug', () => {
+test('buildLiveWsUrl selects ws vs wss and encodes org and bot slugs', () => {
   assert.equal(
-    buildLiveWsUrl({ protocol: 'http:', host: 'localhost:3000' }, 'freight-support-bot', 'hosted'),
-    'ws://localhost:3000/api/v1/bots/freight-support-bot/live?channel=hosted'
+    buildLiveWsUrl({ protocol: 'http:', host: 'localhost:3000' }, 'meridian-logistics', 'freight-support-bot', 'hosted'),
+    'ws://localhost:3000/api/v1/bots/meridian-logistics/freight-support-bot/live?channel=hosted'
   );
   assert.equal(
-    buildLiveWsUrl({ protocol: 'https:', host: 'chat.example.com' }, 'my shop', 'widget'),
-    'wss://chat.example.com/api/v1/bots/my%20shop/live?channel=widget'
+    buildLiveWsUrl({ protocol: 'https:', host: 'chat.example.com' }, 'my org', 'my shop', 'widget'),
+    'wss://chat.example.com/api/v1/bots/my%20org/my%20shop/live?channel=widget'
   );
 });
 

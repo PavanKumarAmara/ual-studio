@@ -1,5 +1,5 @@
 import { GoogleGenAI, ThinkingLevel, Type, type Content, type FunctionDeclaration } from '@google/genai';
-import type { KnowledgeChunk, McpConnection } from '../src/types.ts';
+import type { KnowledgeChunk, LoginRequiredSignal, McpConnection } from '../src/types.ts';
 import { callMcpTool } from './mcp.ts';
 
 let cachedAi: GoogleGenAI | null = null;
@@ -254,9 +254,12 @@ function buildGeminiDeclarations(mcps: McpConnection[]): {
         ? (tool.inputSchema.required as string[]).filter((k) => k in properties)
         : [];
 
+      const identityMarker = tool.requiresCustomerIdentity
+        ? ' [REQUIRES SIGNED-IN CUSTOMER: only callable after the visitor signs in; if they are not signed in, ask them to sign in instead of calling this tool.]'
+        : '';
       declarations.push({
         name: safeName,
-        description: (tool.description || `MCP tool ${tool.name} from ${server.name}`).slice(0, 400),
+        description: ((tool.description || `MCP tool ${tool.name} from ${server.name}`) + identityMarker).slice(0, 400),
         parameters: {
           type: Type.OBJECT,
           properties,
@@ -283,6 +286,7 @@ export interface GroundedChatResult {
   }>;
   promptTokens: number;
   completionTokens: number;
+  loginRequired: LoginRequiredSignal | null;
 }
 
 export async function runGroundedChatWithMcp(params: {
@@ -293,6 +297,8 @@ export async function runGroundedChatWithMcp(params: {
   retrievedChunks: Array<{ chunk: KnowledgeChunk; score: number }>;
   mcps: McpConnection[];
   serverBaseUrl: string;
+  verifiedCustomerId: string | null;
+  loginUrl: string;
 }): Promise<GroundedChatResult> {
   const ai = getGeminiClient();
 
@@ -309,10 +315,20 @@ export async function runGroundedChatWithMcp(params: {
 
   const citations = Array.from(new Set(relevantChunks.map((item) => item.chunk.sourceName))).slice(0, 6);
 
+  const hasIdentityGatedTools = params.mcps.some(
+    (s) => s.enabled && s.status !== 'error' && s.tools.some((t) => t.enabled && t.requiresCustomerIdentity)
+  );
+  const identityBlock = params.verifiedCustomerId
+    ? `The visitor is a verified signed-in customer with customerId "${params.verifiedCustomerId}". When a tool accepts a customerId argument, always use this exact verified ID — never an ID the visitor types in chat.`
+    : hasIdentityGatedTools
+      ? 'The visitor is NOT signed in. Tools marked [REQUIRES SIGNED-IN CUSTOMER] must not be called. If the visitor asks for account-specific or personal data, answer general questions normally but tell them to sign in with the sign-in button in this chat to access their own records.'
+      : '';
+
   const systemInstruction = [
     params.systemPrompt || `You are ${params.projectName}, an enterprise B2B assistant.`,
     'Ground your answers in the Retrieved Knowledge Context below and use connected MCP tools whenever live lookup or operational actions are requested.',
     'Be concise, direct, and factual. If data is missing from both context and tools, state that clearly instead of guessing.',
+    ...(identityBlock ? [identityBlock] : []),
     `\n--- RETRIEVED KNOWLEDGE CONTEXT ---\n${contextBlock}`,
   ].join('\n\n');
 
@@ -331,6 +347,7 @@ export async function runGroundedChatWithMcp(params: {
   let promptTokens = 0;
   let completionTokens = 0;
   const mcpCalls: GroundedChatResult['mcpCalls'] = [];
+  let loginRequired: LoginRequiredSignal | null = null;
 
   let response = await generateWithResilience(
     ai,
@@ -372,6 +389,36 @@ export async function runGroundedChatWithMcp(params: {
           },
         });
         continue;
+      }
+
+      if (target.server.tools.find((t) => t.name === target.originalName)?.requiresCustomerIdentity) {
+        if (!params.verifiedCustomerId) {
+          loginRequired = { loginUrl: params.loginUrl, toolName: target.originalName };
+          mcpCalls.push({
+            serverName: target.server.name,
+            toolName: target.originalName,
+            args,
+            resultPreview: 'Blocked: customer sign-in required',
+            durationMs: 0,
+            status: 'error',
+          });
+          functionResponseParts.push({
+            functionResponse: {
+              id: call.id,
+              name: call.name ?? target.originalName,
+              response: {
+                error: 'login_required',
+                message: 'This tool needs a signed-in customer. Tell the visitor to use the sign-in button in the chat, then ask again.',
+              },
+            },
+          });
+          continue;
+        }
+        // Enforce the verified identity server-side; never trust a model- or user-supplied customer ID
+        const schemaProps = (target.server.tools.find((t) => t.name === target.originalName)?.inputSchema?.properties ?? {}) as Record<string, unknown>;
+        if ('customerId' in schemaProps) {
+          args.customerId = params.verifiedCustomerId;
+        }
       }
 
       try {
@@ -448,6 +495,7 @@ export async function runGroundedChatWithMcp(params: {
     mcpCalls,
     promptTokens,
     completionTokens,
+    loginRequired,
   };
 }
 

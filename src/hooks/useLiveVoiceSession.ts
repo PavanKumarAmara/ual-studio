@@ -14,12 +14,14 @@ import {
 export type LiveVoiceStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'error';
 
 interface UseLiveVoiceSessionOptions {
+  orgSlug: string;
   botSlug: string;
   channel: 'hosted' | 'widget';
   onTurnComplete?: (turn: { userText: string; assistantText: string }) => void;
 }
 
 export function useLiveVoiceSession({
+  orgSlug,
   botSlug,
   channel,
   onTurnComplete,
@@ -228,7 +230,7 @@ export function useLiveVoiceSession({
       inputCtxRef.current = inputCtx;
       outputCtxRef.current = outputCtx;
 
-      const wsUrl = buildLiveWsUrl(window.location, botSlug, channel);
+      const wsUrl = buildLiveWsUrl(window.location, orgSlug, botSlug, channel);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -320,7 +322,7 @@ export function useLiveVoiceSession({
       setError(err instanceof Error ? err.message : 'Failed to initialize Live Voice audio.');
       setStatus('error');
     }
-  }, [botSlug, channel, cleanupResources, playOutputChunk, status, stopPlaybackQueue]);
+  }, [orgSlug, botSlug, channel, cleanupResources, playOutputChunk, status, stopPlaybackQueue]);
 
   useEffect(() => {
     return () => {

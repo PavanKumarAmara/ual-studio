@@ -84,6 +84,19 @@ service cloud.firestore {
         (!('voiceName' in theme) || theme.voiceName in ['Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir']);
     }
 
+    function isValidStorePage(page) {
+      return page is map &&
+        page.keys().hasAll(['published', 'title', 'tagline', 'logoUrl', 'primaryColor', 'sections']) &&
+        page.keys().hasOnly(['published', 'title', 'tagline', 'logoUrl', 'primaryColor', 'sections']) &&
+        page.published is bool &&
+        page.title is string && page.title.size() <= 100 &&
+        page.tagline is string && page.tagline.size() <= 200 &&
+        page.logoUrl is string && page.logoUrl.size() <= 500 &&
+        page.primaryColor is string && page.primaryColor.size() >= 4 && page.primaryColor.size() <= 20 &&
+        page.sections is list && page.sections.size() <= 10 &&
+        (page.sections.size() == 0 || page.sections[0] is map);
+    }
+
     function isValidProject(data, orgId) {
       return data.keys().hasAll([
           'orgId', 'ownerId', 'name', 'slug', 'description', 'systemPrompt',
@@ -93,6 +106,7 @@ service cloud.firestore {
         data.keys().hasOnly([
           'orgId', 'ownerId', 'name', 'slug', 'description', 'systemPrompt',
           'knowledgeBrief', 'apiKey', 'status', 'theme', 'chunkCount', 'sourceCount',
+          'identitySecret', 'loginUrl', 'storePage',
           'createdAt', 'updatedAt'
         ]) &&
         data.orgId == orgId &&
@@ -104,6 +118,9 @@ service cloud.firestore {
         data.systemPrompt is string && data.systemPrompt.size() <= 4000 &&
         data.knowledgeBrief is string && data.knowledgeBrief.size() <= 6000 &&
         data.apiKey is string && data.apiKey.size() >= 16 && data.apiKey.size() <= 120 &&
+        (!('identitySecret' in data) || (data.identitySecret is string && data.identitySecret.size() >= 16 && data.identitySecret.size() <= 120)) &&
+        (!('loginUrl' in data) || (data.loginUrl is string && data.loginUrl.size() <= 500)) &&
+        (!('storePage' in data) || isValidStorePage(data.storePage)) &&
         data.status in ['active', 'paused'] &&
         isValidTheme(data.theme) &&
         data.chunkCount is number && data.chunkCount >= 0 && data.chunkCount <= 50000 &&
@@ -257,6 +274,10 @@ service cloud.firestore {
             incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'systemPrompt', 'theme', 'status', 'updatedAt']) ||
             // Action: Rotate API key
             incoming().diff(existing()).affectedKeys().hasOnly(['apiKey', 'updatedAt']) ||
+            // Action: Configure customer identity (HMAC secret & login URL)
+            incoming().diff(existing()).affectedKeys().hasOnly(['identitySecret', 'loginUrl', 'updatedAt']) ||
+            // Action: Edit hosted store page
+            incoming().diff(existing()).affectedKeys().hasOnly(['storePage', 'updatedAt']) ||
             // Action: Sync knowledge stats & brief
             incoming().diff(existing()).affectedKeys().hasOnly(['knowledgeBrief', 'chunkCount', 'sourceCount', 'updatedAt'])
           );

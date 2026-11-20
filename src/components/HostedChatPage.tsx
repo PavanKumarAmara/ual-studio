@@ -10,7 +10,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { ChatTheme, ChatTurnMessage, CustomerConversationThread } from '../types';
+import type { ChatTheme, ChatTurnMessage, CustomerConversationThread, CustomerIdentityClaim } from '../types';
 import {
   buildHistoryStorageKey,
   clearCustomerThreads,
@@ -78,6 +78,32 @@ export function HostedChatPage({
     const params = new URLSearchParams(window.location.search);
     return params.get('customerId') || params.get('customer') || null;
   }, []);
+
+  // Signed customer identity (HMAC) arrives via URL params from the business's backend
+  // and survives reloads within the tab session.
+  const [customerIdentity] = useState<CustomerIdentityClaim | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const storageKey = `ual_identity_${orgSlug}_${botSlug}`;
+    const params = new URLSearchParams(window.location.search);
+    const customerId = params.get('customerId') || params.get('customer');
+    const sig = params.get('sig');
+    const ts = Number(params.get('ts') ?? 0);
+    if (customerId && sig && ts) {
+      const claim: CustomerIdentityClaim = { customerId, sig, ts };
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify(claim));
+      } catch {
+        // Storage unavailable; identity still usable for this page load
+      }
+      return claim;
+    }
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      return stored ? (JSON.parse(stored) as CustomerIdentityClaim) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const storageKey = useMemo(
     () => buildHistoryStorageKey(orgSlug, botSlug, customerScope),
@@ -175,6 +201,7 @@ export function HostedChatPage({
   );
 
   const voice = useLiveVoiceSession({
+    orgSlug,
     botSlug: bot?.project.slug || botSlug,
     channel: isEmbed ? 'widget' : 'hosted',
     onTurnComplete: handleVoiceTurnComplete,
@@ -243,7 +270,7 @@ export function HostedChatPage({
     setSending(true);
 
     try {
-      const res = await fetch(`/api/v1/bots/${encodeURIComponent(bot.project.slug)}/chat`, {
+      const res = await fetch(`/api/v1/bots/${encodeURIComponent(orgSlug)}/${encodeURIComponent(bot.project.slug)}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -252,6 +279,7 @@ export function HostedChatPage({
         body: JSON.stringify({
           message: clean,
           history: messages.map((m) => ({ role: m.role, content: m.content })),
+          ...(customerIdentity ? { customerIdentity } : {}),
         }),
       });
       const data = await res.json();
@@ -265,6 +293,7 @@ export function HostedChatPage({
           mcpCalls: data.mcpCalls ?? [],
           latencyMs: data.latencyMs,
           tokens: data.usage?.totalTokens ?? 0,
+          loginRequired: data.loginRequired ?? undefined,
         },
       ];
       setMessages(completed);
@@ -576,6 +605,22 @@ export function HostedChatPage({
 
                 {msg.role === 'assistant' && (
                   <div className="mt-1.5 space-y-1 max-w-[85%]">
+                    {msg.loginRequired && (
+                      msg.loginRequired.loginUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => window.open(msg.loginRequired!.loginUrl, '_blank', 'noopener')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-lg shadow-sm"
+                          style={{ backgroundColor: theme.primaryColor }}
+                        >
+                          Sign in to access your account
+                        </button>
+                      ) : (
+                        <p className="text-[11px] text-amber-700">
+                          Sign in on the company website, then ask again to access your account data.
+                        </p>
+                      )
+                    )}
                     {msg.citations && msg.citations.length > 0 && (
                       <p className="text-[11px] text-slate-500">
                         Sources: {msg.citations.join(' · ')}

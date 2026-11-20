@@ -29,11 +29,12 @@ export function normalizeVoiceName(val: unknown): LiveVoiceName {
 
 export function buildLiveWsUrl(
   locationLike: { protocol: string; host: string },
+  orgSlug: string,
   botSlug: string,
   channel: 'hosted' | 'widget'
 ): string {
   const wsProto = locationLike.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${wsProto}//${locationLike.host}/api/v1/bots/${encodeURIComponent(botSlug)}/live?channel=${channel}`;
+  return `${wsProto}//${locationLike.host}/api/v1/bots/${encodeURIComponent(orgSlug)}/${encodeURIComponent(botSlug)}/live?channel=${channel}`;
 }
 
 export function downsampleFloat32(

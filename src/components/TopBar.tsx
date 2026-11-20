@@ -8,6 +8,7 @@ const TAB_TITLES: Record<WorkspaceTab, string> = {
   connectors: 'Data & Knowledge',
   mcp: 'MCP Servers',
   theme: 'Theme & Embed',
+  storepage: 'Store Page',
   observability: 'Observability & Insights',
   gcp: 'GCP Architecture',
 };

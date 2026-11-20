@@ -9,7 +9,7 @@ import {
 } from '@google/genai';
 import { formatGeminiError } from './gemini.ts';
 import { callMcpTool } from './mcp.ts';
-import { appendRuntimeTrace, getBotBySlug } from './runtimeStore.ts';
+import { appendRuntimeTrace, getBotByOrgAndSlug } from './runtimeStore.ts';
 import { rankChunks } from '../src/utils/retrieval.ts';
 import { normalizeVoiceName } from '../src/utils/voiceAudio.ts';
 import type { BotRuntimeSnapshot, McpConnection, TraceChannel, TraceLog } from '../src/types.ts';
@@ -82,6 +82,8 @@ function buildLiveToolDeclarations(bot: BotRuntimeSnapshot): {
     if (!server.enabled || server.status === 'error') continue;
     for (const tool of server.tools) {
       if (!tool.enabled) continue;
+      // Identity-gated tools are chat-only: voice sessions cannot verify customer identity
+      if (tool.requiresCustomerIdentity) continue;
       const safeName = tool.name.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 64);
       if (!safeName || safeName === 'search_knowledge_base' || mcpToolMap.has(safeName)) continue;
 
@@ -127,6 +129,10 @@ function buildLiveSystemInstruction(bot: BotRuntimeSnapshot): string {
     ? `Knowledge Overview: ${bot.project.knowledgeBrief}`
     : '';
 
+  const hasIdentityGatedTools = bot.mcps.some(
+    (s) => s.enabled && s.status !== 'error' && s.tools.some((t) => t.enabled && t.requiresCustomerIdentity)
+  );
+
   const topSnippets = bot.chunks
     .slice(0, 6)
     .map((c, idx) => `[Doc ${idx + 1} · ${c.sourceName}] ${c.content.slice(0, 650)}`)
@@ -137,6 +143,9 @@ function buildLiveSystemInstruction(bot: BotRuntimeSnapshot): string {
     'You are speaking in a real-time live voice conversation with a customer.',
     'Keep answers concise, warm, natural, and easy to follow aloud (typically 1-3 crisp sentences unless the user asks for details). Do not read raw markdown symbols, URLs, or code punctuation aloud.',
     'Ground every factual answer in the knowledge excerpts below, call search_knowledge_base for deeper policy/pricing lookups, and call connected MCP tools whenever live shipment, account, or ticket actions are requested.',
+    hasIdentityGatedTools
+      ? 'Some account-specific actions are unavailable in voice mode because they require a signed-in customer. If asked for personal account data, tell the caller to use the text chat and sign in there.'
+      : '',
     knowledgeSummary,
     topSnippets ? `--- INDEXED KNOWLEDGE EXCERPTS ---\n${topSnippets}` : '',
   ]
@@ -156,17 +165,18 @@ export function attachLiveVoiceServer(httpServer: HttpServer, port: number): Web
   httpServer.on('upgrade', (request: IncomingMessage, socket, head) => {
     const rawUrl = request.url || '';
     const parsedUrl = new URL(rawUrl, `http://127.0.0.1:${port}`);
-    const match = /^\/api\/v1\/bots\/([^/]+)\/live\/?$/.exec(parsedUrl.pathname);
+    const match = /^\/api\/v1\/bots\/([^/]+)\/([^/]+)\/live\/?$/.exec(parsedUrl.pathname);
     if (!match) {
       return;
     }
 
-    const botSlug = decodeURIComponent(match[1]);
+    const orgSlug = decodeURIComponent(match[1]);
+    const botSlug = decodeURIComponent(match[2]);
     const channelParam = (parsedUrl.searchParams.get('channel') || 'hosted').toLowerCase();
     const channel: TraceChannel = channelParam === 'widget' ? 'widget' : 'hosted';
 
     wss.handleUpgrade(request, socket, head, (ws) => {
-      void handleLiveClientConnection(ws, botSlug, channel, port);
+      void handleLiveClientConnection(ws, orgSlug, botSlug, channel, port);
     });
   });
 
@@ -175,13 +185,14 @@ export function attachLiveVoiceServer(httpServer: HttpServer, port: number): Web
 
 async function handleLiveClientConnection(
   clientWs: WebSocket,
+  orgSlug: string,
   botSlug: string,
   channel: TraceChannel,
   port: number
 ): Promise<void> {
-  const bot = getBotBySlug(botSlug);
+  const bot = getBotByOrgAndSlug(orgSlug, botSlug);
   if (!bot) {
-    safeSend(clientWs, { type: 'error', message: `Chatbot service "${botSlug}" was not found.` });
+    safeSend(clientWs, { type: 'error', message: `Chatbot service "${orgSlug}/${botSlug}" was not found.` });
     clientWs.close(1008, 'Bot not found');
     return;
   }
@@ -236,7 +247,7 @@ async function handleLiveClientConnection(
       mcpCalls: turnToolCalls.slice(0, 10),
       createdAt: new Date().toISOString(),
     };
-    appendRuntimeTrace(botSlug, trace);
+    appendRuntimeTrace(orgSlug, botSlug, trace);
     currentUserText = '';
     currentAssistantText = '';
     turnToolCalls = [];

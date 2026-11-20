@@ -99,9 +99,11 @@ export function McpTab({ mcps, onAddMcp, onUpdateMcp, onDeleteMcp }: McpTabProps
       if (!res.ok) throw new Error(data.error || 'Rediscovery failed.');
 
       const existingToggleMap = new Map(mcp.tools.map((t) => [t.name, t.enabled]));
+      const existingIdentityMap = new Map(mcp.tools.map((t) => [t.name, Boolean(t.requiresCustomerIdentity)]));
       const mergedTools: McpTool[] = (data.tools ?? []).map((t: McpTool) => ({
         ...t,
         enabled: existingToggleMap.has(t.name) ? Boolean(existingToggleMap.get(t.name)) : true,
+        requiresCustomerIdentity: existingIdentityMap.get(t.name) ?? false,
       }));
 
       await onUpdateMcp(mcp.id, {
@@ -124,6 +126,17 @@ export function McpTab({ mcps, onAddMcp, onUpdateMcp, onDeleteMcp }: McpTabProps
   const toggleTool = async (mcp: McpConnection, toolName: string) => {
     const nextTools = mcp.tools.map((t) =>
       t.name === toolName ? { ...t, enabled: !t.enabled } : t
+    );
+    await onUpdateMcp(mcp.id, {
+      enabled: mcp.enabled,
+      status: mcp.status,
+      tools: nextTools,
+    });
+  };
+
+  const toggleToolIdentity = async (mcp: McpConnection, toolName: string) => {
+    const nextTools = mcp.tools.map((t) =>
+      t.name === toolName ? { ...t, requiresCustomerIdentity: !t.requiresCustomerIdentity } : t
     );
     await onUpdateMcp(mcp.id, {
       enabled: mcp.enabled,
@@ -334,6 +347,11 @@ export function McpTab({ mcps, onAddMcp, onUpdateMcp, onDeleteMcp }: McpTabProps
                 </div>
               </div>
 
+              <div className="px-6 py-2.5 bg-amber-50/60 border-b border-slate-200 text-[11px] text-slate-600 leading-relaxed">
+                <span className="font-semibold text-slate-700">Requires sign-in</span> restricts a tool to HMAC-verified customers
+                (set the identity secret and login URL in Overview). Anonymous visitors can call ungated tools with this
+                connection's API key — leave the gate off only for tools that expose non-sensitive data.
+              </div>
               {mcp.tools.length === 0 ? (
                 <div className="px-6 py-4 text-xs text-slate-500">
                   No tools exposed by this server.
@@ -346,19 +364,38 @@ export function McpTab({ mcps, onAddMcp, onUpdateMcp, onDeleteMcp }: McpTabProps
                       className="px-6 py-3.5 flex items-start justify-between gap-4 hover:bg-slate-50/70"
                     >
                       <div className="space-y-0.5 min-w-0">
-                        <p className="text-xs font-mono font-semibold text-slate-900">{tool.name}</p>
+                        <p className="text-xs font-mono font-semibold text-slate-900">
+                          {tool.name}
+                          {tool.requiresCustomerIdentity && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-sans font-medium text-[10px] align-middle">
+                              sign-in gated
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs text-slate-600">{tool.description}</p>
                       </div>
-                      <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer shrink-0 pt-0.5">
-                        <input
-                          type="checkbox"
-                          checked={tool.enabled}
-                          onChange={() => toggleTool(mcp, tool.name)}
-                          aria-label={`Toggle tool ${tool.name}`}
-                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span>{tool.enabled ? 'Allowed' : 'Blocked'}</span>
-                      </label>
+                      <div className="flex items-start gap-4 shrink-0 pt-0.5">
+                        <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer" title="Only runs for customers verified via HMAC sign-in; anonymous visitors get a sign-in prompt instead">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(tool.requiresCustomerIdentity)}
+                            onChange={() => toggleToolIdentity(mcp, tool.name)}
+                            aria-label={`Require customer sign-in for ${tool.name}`}
+                            className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                          />
+                          <span>Requires sign-in</span>
+                        </label>
+                        <label className="inline-flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={tool.enabled}
+                            onChange={() => toggleTool(mcp, tool.name)}
+                            aria-label={`Toggle tool ${tool.name}`}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{tool.enabled ? 'Allowed' : 'Blocked'}</span>
+                        </label>
+                      </div>
                     </div>
                   ))}
                 </div>

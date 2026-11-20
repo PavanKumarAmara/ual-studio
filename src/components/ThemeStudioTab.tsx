@@ -46,11 +46,12 @@ export function ThemeStudioTab({
     ...(historyEnabled
       ? ['<!-- Optional: pass data-customer-id="USER_ID" to scope history per signed-in customer -->']
       : []),
+    '<!-- For account-specific tools: also pass data-customer-sig and data-customer-ts (HMAC-signed by your backend, see Overview) -->',
     ...(voiceEnabled
       ? ['<!-- Live Voice Mode is enabled: embed iframe automatically requests microphone access -->']
       : []),
   ].join('\n');
-  const embedCode = `${embedComments}\n<script src="${origin}/embed/${project.slug}.js" async></script>`;
+  const embedCode = `${embedComments}\n<script src="${origin}/embed/${org.slug}/${project.slug}.js" async></script>`;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +90,7 @@ export function ThemeStudioTab({
     setPreviewInput('');
     setPreviewSending(true);
     try {
-      const res = await fetch(`/api/v1/bots/${project.slug}/chat`, {
+      const res = await fetch(`/api/v1/bots/${org.slug}/${project.slug}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
