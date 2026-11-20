@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import type { BotRuntimeSnapshot, KnowledgeChunk, McpConnection, Project } from '../src/types.ts';
 
 // Server-side Firestore reads use Application Default Credentials:
@@ -13,16 +14,27 @@ const credentialsAvailable = Boolean(
 let dbPromise: Promise<FirebaseFirestore.Firestore> | null = null;
 let loaderDisabled = !credentialsAvailable;
 
+// The portal writes to the named AI Studio database, not (default) — mirror src/lib/firebase.ts
+function readAppletConfig(): { projectId?: string; firestoreDatabaseId?: string } {
+  try {
+    return JSON.parse(readFileSync(new URL('../firebase-applet-config.json', import.meta.url), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
 async function getDb(): Promise<FirebaseFirestore.Firestore | null> {
   if (loaderDisabled) return null;
   if (!dbPromise) {
     dbPromise = (async () => {
       const { initializeApp, getApps } = await import('firebase-admin/app');
       const { getFirestore } = await import('firebase-admin/firestore');
-      if (getApps().length === 0) {
-        initializeApp(process.env.FIREBASE_PROJECT_ID ? { projectId: process.env.FIREBASE_PROJECT_ID } : undefined);
-      }
-      return getFirestore();
+      const cfg = readAppletConfig();
+      const app =
+        getApps()[0] ??
+        initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || cfg.projectId || undefined });
+      const databaseId = process.env.FIRESTORE_DATABASE_ID || cfg.firestoreDatabaseId;
+      return databaseId ? getFirestore(app, databaseId) : getFirestore(app);
     })().catch((err) => {
       console.warn('Firestore runtime loader disabled:', err instanceof Error ? err.message : err);
       loaderDisabled = true;
