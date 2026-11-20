@@ -14,8 +14,8 @@ import {
   validatePostgresUri,
   validateS3PublicUrl,
   validateWebsiteUrl,
-} from '../src/utils/ingestion';
-import { embedTexts, extractPdfTextWithGemini } from './gemini';
+} from '../src/utils/ingestion.ts';
+import { embedTexts, extractPdfTextWithGemini } from './gemini.ts';
 
 export interface IngestedChunkPayload {
   sourceName: string;

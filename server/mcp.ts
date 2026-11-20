@@ -1,4 +1,4 @@
-import type { McpTool } from '../src/types';
+import type { McpTool } from '../src/types.ts';
 
 // --- Built-in Live Demo MCP Server (Streamable HTTP JSON-RPC 2.0) ---
 

@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel, Type, type Content, type FunctionDeclaration } from '@google/genai';
-import type { KnowledgeChunk, McpConnection } from '../src/types';
-import { callMcpTool } from './mcp';
+import type { KnowledgeChunk, McpConnection } from '../src/types.ts';
+import { callMcpTool } from './mcp.ts';
 
 let cachedAi: GoogleGenAI | null = null;
 

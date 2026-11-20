@@ -281,7 +281,13 @@ function RelayMeshApp() {
     try {
       await signInWithPopup(auth, googleAuthProvider);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Google Sign-In was cancelled or blocked.';
+      const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: unknown }).code) : '';
+      let msg = err instanceof Error ? err.message : 'Google Sign-In was cancelled or blocked.';
+      if (code === 'auth/unauthorized-domain') {
+        msg = `This domain (${window.location.hostname}) is not authorized in Firebase Authentication. Add it under Firebase Console → Authentication → Settings → Authorized domains, then retry.`;
+      } else if (code === 'auth/popup-blocked') {
+        msg = 'Google Sign-In popup was blocked by your browser. Allow popups for this site and try again.';
+      }
       setAuthError(msg);
       console.error('Google Sign-In failed:', err);
     } finally {
@@ -782,6 +788,7 @@ function RelayMeshApp() {
       <CompanyOnboarding
         userEmail={user?.email ?? 'account@company.com'}
         userDisplayName={user?.displayName ?? ''}
+        syncError={cloudSyncBanner}
         onSignOut={handleSignOut}
         onRegisterCompany={handleOnboardingRegister}
         onLoadSampleWorkspace={handleLoadSampleIntoAccount}

@@ -7,12 +7,12 @@ import {
   type FunctionDeclaration,
   type LiveServerMessage,
 } from '@google/genai';
-import { formatGeminiError } from './gemini';
-import { callMcpTool } from './mcp';
-import { appendRuntimeTrace, getBotBySlug } from './runtimeStore';
-import { rankChunks } from '../src/utils/retrieval';
-import { normalizeVoiceName } from '../src/utils/voiceAudio';
-import type { BotRuntimeSnapshot, McpConnection, TraceChannel, TraceLog } from '../src/types';
+import { formatGeminiError } from './gemini.ts';
+import { callMcpTool } from './mcp.ts';
+import { appendRuntimeTrace, getBotBySlug } from './runtimeStore.ts';
+import { rankChunks } from '../src/utils/retrieval.ts';
+import { normalizeVoiceName } from '../src/utils/voiceAudio.ts';
+import type { BotRuntimeSnapshot, McpConnection, TraceChannel, TraceLog } from '../src/types.ts';
 
 const LIVE_MODEL = 'gemini-3.8-live';
 

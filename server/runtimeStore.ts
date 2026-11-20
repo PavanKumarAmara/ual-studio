@@ -1,11 +1,11 @@
-import type { BotRuntimeSnapshot, TraceLog } from '../src/types';
+import type { BotRuntimeSnapshot, TraceLog } from '../src/types.ts';
 import {
   SEED_ORGANIZATIONS,
   SEED_PROJECTS,
   SEED_CHUNKS,
   SEED_MCPS,
   SEED_TRACES,
-} from '../src/utils/seedData';
+} from '../src/utils/seedData.ts';
 
 const botRegistry = new Map<string, BotRuntimeSnapshot>();
 const runtimeTraces = new Map<string, TraceLog[]>();

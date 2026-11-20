@@ -5,6 +5,7 @@ import { slugify } from '../utils/ingestion';
 interface CompanyOnboardingProps {
   userEmail: string;
   userDisplayName: string;
+  syncError?: string;
   onSignOut: () => void;
   onRegisterCompany: (data: {
     companyName: string;
@@ -18,6 +19,7 @@ interface CompanyOnboardingProps {
 export function CompanyOnboarding({
   userEmail,
   userDisplayName,
+  syncError,
   onSignOut,
   onRegisterCompany,
   onLoadSampleWorkspace,
@@ -113,8 +115,13 @@ export function CompanyOnboarding({
 
           <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8">
             <form onSubmit={handleSubmit} className="space-y-4">
+              {syncError && (
+                <div className="p-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+                  {syncError}
+                </div>
+              )}
               {error && (
-                <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg">
+                <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg break-words">
                   {error}
                 </div>
               )}

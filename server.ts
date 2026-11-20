@@ -3,21 +3,20 @@ import http from 'http';
 import express from 'express';
 import path from 'path';
 import multer from 'multer';
-import { createServer as createViteServer } from 'vite';
-import { attachLiveVoiceServer } from './server/liveVoice';
+import { attachLiveVoiceServer } from './server/liveVoice.ts';
 import {
   embedTexts,
   generateProductInsights,
   runGroundedChatWithMcp,
   synthesizeKnowledgeBrief,
-} from './server/gemini';
+} from './server/gemini.ts';
 import {
   ingestFlatFile,
   ingestPostgresSource,
   ingestPublicS3Folder,
   ingestWebsiteSource,
-} from './server/connectors';
-import { discoverMcpTools, handleDemoMcpJsonRpc } from './server/mcp';
+} from './server/connectors.ts';
+import { discoverMcpTools, handleDemoMcpJsonRpc } from './server/mcp.ts';
 import {
   appendRuntimeTrace,
   getBotByOrgAndSlug,
@@ -25,9 +24,9 @@ import {
   getRuntimeTraces,
   listRuntimeBots,
   syncBotSnapshot,
-} from './server/runtimeStore';
-import { rankChunks } from './src/utils/retrieval';
-import type { BotRuntimeSnapshot, TraceChannel, TraceLog } from './src/types';
+} from './server/runtimeStore.ts';
+import { rankChunks } from './src/utils/retrieval.ts';
+import type { BotRuntimeSnapshot, TraceChannel, TraceLog } from './src/types.ts';
 
 const PORT = Number(process.env.PORT || 3000);
 const upload = multer({
@@ -37,6 +36,7 @@ const upload = multer({
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '10mb' }));
 
   // Basic CORS for customer-embedded chat widgets and external API callers
@@ -423,6 +423,7 @@ async function startServer() {
 
   // Vite middleware in dev, static dist in production
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
