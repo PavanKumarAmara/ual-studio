@@ -129,8 +129,17 @@ export function StorePageTab({ org, project, onSavePage }: StorePageTabProps) {
       await onSavePage(draft);
       setSavedJson(JSON.stringify(draft));
       setNotice(draft.published ? 'Saved. Your store page is live.' : 'Saved as draft. Toggle Publish to make it live.');
-    } catch {
-      setNotice('Save failed. Please try again.');
+    } catch (err) {
+      let reason = err instanceof Error ? err.message : 'Unknown error';
+      try {
+        reason = JSON.parse(reason).error ?? reason;
+      } catch {
+        // Not a structured Firestore error; keep raw message
+      }
+      const hint = /permission|insufficient/i.test(reason)
+        ? ' Firestore rejected the write — publish the updated firestore.rules to the ai-studio-… database in Firebase Console (Firestore → Rules), not (default).'
+        : '';
+      setNotice(`Save failed: ${reason}${hint}`);
     } finally {
       setSaving(false);
     }
