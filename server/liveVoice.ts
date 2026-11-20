@@ -9,7 +9,7 @@ import {
 } from '@google/genai';
 import { formatGeminiError } from './gemini.ts';
 import { callMcpTool } from './mcp.ts';
-import { appendRuntimeTrace, getBotByOrgAndSlug } from './runtimeStore.ts';
+import { appendRuntimeTrace, resolveBotSnapshot } from './runtimeStore.ts';
 import { rankChunks } from '../src/utils/retrieval.ts';
 import { normalizeVoiceName } from '../src/utils/voiceAudio.ts';
 import type { BotRuntimeSnapshot, McpConnection, TraceChannel, TraceLog } from '../src/types.ts';
@@ -190,7 +190,7 @@ async function handleLiveClientConnection(
   channel: TraceChannel,
   port: number
 ): Promise<void> {
-  const bot = getBotByOrgAndSlug(orgSlug, botSlug);
+  const bot = await resolveBotSnapshot(orgSlug, botSlug);
   if (!bot) {
     safeSend(clientWs, { type: 'error', message: `Chatbot service "${orgSlug}/${botSlug}" was not found.` });
     clientWs.close(1008, 'Bot not found');

@@ -20,9 +20,9 @@ import { discoverMcpTools, handleDemoMcpJsonRpc } from './server/mcp.ts';
 import { verifyCustomerIdentity } from './server/identity.ts';
 import {
   appendRuntimeTrace,
-  getBotByOrgAndSlug,
   getRuntimeTraces,
   listRuntimeBots,
+  resolveBotSnapshot,
   syncBotSnapshot,
 } from './server/runtimeStore.ts';
 import { rankChunks } from './src/utils/retrieval.ts';
@@ -79,8 +79,8 @@ async function startServer() {
   });
 
   // 3. Public Safe Bot Config (for Hosted Chat URL /c/:orgSlug/:botSlug & Embed Widget — never leaks API keys)
-  app.get('/api/public/bots/:orgSlug/:botSlug', (req, res) => {
-    const bot = getBotByOrgAndSlug(req.params.orgSlug, req.params.botSlug);
+  app.get('/api/public/bots/:orgSlug/:botSlug', async (req, res) => {
+    const bot = await resolveBotSnapshot(req.params.orgSlug, req.params.botSlug);
     if (!bot) {
       res.status(404).json({ error: 'Chatbot service not found.' });
       return;
@@ -105,8 +105,8 @@ async function startServer() {
   });
 
   // 3b. Public Store Page Config (hosted storefront /s/:orgSlug/:botSlug — safe fields only)
-  app.get('/api/public/pages/:orgSlug/:botSlug', (req, res) => {
-    const bot = getBotByOrgAndSlug(req.params.orgSlug, req.params.botSlug);
+  app.get('/api/public/pages/:orgSlug/:botSlug', async (req, res) => {
+    const bot = await resolveBotSnapshot(req.params.orgSlug, req.params.botSlug);
     if (!bot || !bot.project.storePage?.published) {
       res.status(404).json({ error: 'Store page not found or not published.' });
       return;
@@ -124,7 +124,7 @@ async function startServer() {
   app.post('/api/v1/bots/:orgSlug/:botSlug/chat', async (req, res) => {
     const started = Date.now();
     const { orgSlug, botSlug } = req.params;
-    const bot = getBotByOrgAndSlug(orgSlug, botSlug);
+    const bot = await resolveBotSnapshot(orgSlug, botSlug);
 
     if (!bot) {
       res.status(404).json({ error: `Chatbot endpoint "${orgSlug}/${botSlug}" does not exist.` });
@@ -265,9 +265,9 @@ async function startServer() {
   });
 
   // 5. Embeddable Floating Widget Script (/embed/:orgSlug/:botSlug.js)
-  app.get('/embed/:orgSlug/:botSlug.js', (req, res) => {
+  app.get('/embed/:orgSlug/:botSlug.js', async (req, res) => {
     const { orgSlug, botSlug } = req.params;
-    const bot = getBotByOrgAndSlug(orgSlug, botSlug);
+    const bot = await resolveBotSnapshot(orgSlug, botSlug);
     if (!bot) {
       res.type('application/javascript').status(404).send(`console.error("UAL: Bot ${orgSlug}/${botSlug} not found.");`);
       return;

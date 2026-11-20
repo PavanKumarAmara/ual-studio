@@ -1,4 +1,5 @@
 import type { BotRuntimeSnapshot, TraceLog } from '../src/types.ts';
+import { loadBotSnapshotFromFirestore } from './firestoreRuntime.ts';
 import {
   SEED_ORGANIZATIONS,
   SEED_PROJECTS,
@@ -13,6 +14,14 @@ const runtimeKey = (orgSlug: string, botSlug: string) => `${orgSlug}/${botSlug}`
 
 const botRegistry = new Map<string, BotRuntimeSnapshot>();
 const runtimeTraces = new Map<string, TraceLog[]>();
+
+// Firestore is the source of truth; the registry is a cache. Entries older than
+// the TTL are refreshed so cold starts and multi-instance Cloud Run stay correct.
+const SNAPSHOT_TTL_MS = 60_000;
+const MISS_TTL_MS = 30_000;
+const loadedAt = new Map<string, number>();
+const missedAt = new Map<string, number>();
+const inFlight = new Map<string, Promise<BotRuntimeSnapshot | undefined>>();
 
 function initSeedRuntime() {
   for (const proj of SEED_PROJECTS) {
@@ -48,6 +57,8 @@ export function syncBotSnapshot(snapshot: BotRuntimeSnapshot): void {
     ...snapshot,
     mcps: mergedMcps,
   });
+  loadedAt.set(key, Date.now());
+  missedAt.delete(key);
 
   if (!runtimeTraces.has(key)) {
     runtimeTraces.set(key, []);
@@ -56,6 +67,42 @@ export function syncBotSnapshot(snapshot: BotRuntimeSnapshot): void {
 
 export function getBotByOrgAndSlug(orgSlug: string, botSlug: string): BotRuntimeSnapshot | undefined {
   return botRegistry.get(runtimeKey(orgSlug, botSlug));
+}
+
+export async function resolveBotSnapshot(
+  orgSlug: string,
+  botSlug: string
+): Promise<BotRuntimeSnapshot | undefined> {
+  const key = runtimeKey(orgSlug, botSlug);
+  const cached = botRegistry.get(key);
+  const age = Date.now() - (loadedAt.get(key) ?? 0);
+  if (cached && age < SNAPSHOT_TTL_MS) return cached;
+
+  const lastMiss = missedAt.get(key);
+  if (!cached && lastMiss && Date.now() - lastMiss < MISS_TTL_MS) return undefined;
+
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+
+  const load = (async () => {
+    try {
+      const fresh = await loadBotSnapshotFromFirestore(orgSlug, botSlug);
+      if (fresh) {
+        syncBotSnapshot(fresh);
+        return botRegistry.get(key);
+      }
+      missedAt.set(key, Date.now());
+      // Keep serving the last known snapshot (or seed demo) if Firestore has no record
+      return cached;
+    } catch (err) {
+      console.warn(`Firestore snapshot load failed for ${key}:`, err instanceof Error ? err.message : err);
+      return cached;
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+  inFlight.set(key, load);
+  return load;
 }
 
 export function listRuntimeBots(): Array<{ orgSlug: string; botSlug: string; name: string; status: string }> {
