@@ -26,7 +26,7 @@ gcloud run deploy ual-platform \\
   --source . \\
   --region us-central1 \\
   --allow-unauthenticated \\
-  --set-secrets="GEMINI_API_KEY=gemini-api-key:latest"
+  --set-secrets="GEMINI_API_KEY=ual-gemini-apikey:latest"
 
 # 2. Provision wildcard TLS cert via GCP Certificate Manager (for *.${customDomain})
 gcloud certificate-manager dns-authorizations create ual-dns-auth \\

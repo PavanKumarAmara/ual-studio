@@ -22,6 +22,9 @@ const MISS_TTL_MS = 30_000;
 const loadedAt = new Map<string, number>();
 const missedAt = new Map<string, number>();
 const inFlight = new Map<string, Promise<BotRuntimeSnapshot | undefined>>();
+// Entries born from Firestore must disappear when their document is deleted;
+// seed/demo and dashboard-synced entries survive a null lookup instead.
+const firestoreOrigin = new Set<string>();
 
 function initSeedRuntime() {
   for (const proj of SEED_PROJECTS) {
@@ -89,9 +92,16 @@ export async function resolveBotSnapshot(
       const fresh = await loadBotSnapshotFromFirestore(orgSlug, botSlug);
       if (fresh) {
         syncBotSnapshot(fresh);
+        firestoreOrigin.add(key);
         return botRegistry.get(key);
       }
       missedAt.set(key, Date.now());
+      if (firestoreOrigin.has(key)) {
+        botRegistry.delete(key);
+        loadedAt.delete(key);
+        firestoreOrigin.delete(key);
+        return undefined;
+      }
       // Keep serving the last known snapshot (or seed demo) if Firestore has no record
       return cached;
     } catch (err) {
