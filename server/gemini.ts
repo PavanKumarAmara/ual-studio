@@ -408,7 +408,9 @@ export async function runGroundedChatWithMcp(params: {
               name: call.name ?? target.originalName,
               response: {
                 error: 'login_required',
-                message: 'This tool needs a signed-in customer. Tell the visitor to use the sign-in button in the chat, then ask again.',
+                message: params.loginUrl
+                  ? 'This tool needs a signed-in customer. Tell the visitor to use the sign-in button shown below this message in the chat, then ask again.'
+                  : 'This tool needs a signed-in customer. There is no sign-in button in this chat; tell the visitor to sign in on the company website first, then ask again here.',
               },
             },
           });

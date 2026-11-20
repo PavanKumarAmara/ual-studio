@@ -73,15 +73,9 @@ export function HostedChatPage({
   const activeThreadIdRef = useRef<string>(activeThreadId);
   activeThreadIdRef.current = activeThreadId;
 
-  const customerScope = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    return params.get('customerId') || params.get('customer') || null;
-  }, []);
-
-  // Signed customer identity (HMAC) arrives via URL params from the business's backend
-  // and survives reloads within the tab session.
-  const [customerIdentity] = useState<CustomerIdentityClaim | null>(() => {
+  // Signed customer identity (HMAC) arrives via URL params or a postMessage handoff
+  // from the host page, and survives reloads within the tab session.
+  const [customerIdentity, setCustomerIdentity] = useState<CustomerIdentityClaim | null>(() => {
     if (typeof window === 'undefined') return null;
     const storageKey = `ual_identity_${orgSlug}_${botSlug}`;
     const params = new URLSearchParams(window.location.search);
@@ -104,6 +98,31 @@ export function HostedChatPage({
       return null;
     }
   });
+
+  const customerScope = customerIdentity?.customerId ?? null;
+
+  // Host pages hand off a signed identity after their own sign-in (e.g. Google) without
+  // reloading the widget. The HMAC signature is still verified server-side on every chat.
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (window.parent === window || event.source !== window.parent) return;
+      const data = event.data as { type?: unknown; customerId?: unknown; sig?: unknown; ts?: unknown } | null;
+      if (!data || data.type !== 'ual-identity') return;
+      const customerId = typeof data.customerId === 'string' ? data.customerId : '';
+      const sig = typeof data.sig === 'string' ? data.sig : '';
+      const ts = Number(data.ts);
+      if (!customerId || !sig || !Number.isFinite(ts)) return;
+      const claim: CustomerIdentityClaim = { customerId, sig, ts };
+      setCustomerIdentity(claim);
+      try {
+        sessionStorage.setItem(`ual_identity_${orgSlug}_${botSlug}`, JSON.stringify(claim));
+      } catch {
+        // Storage unavailable; identity still usable for this page load
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [orgSlug, botSlug]);
 
   const storageKey = useMemo(
     () => buildHistoryStorageKey(orgSlug, botSlug, customerScope),
@@ -616,9 +635,9 @@ export function HostedChatPage({
                           Sign in to access your account
                         </button>
                       ) : (
-                        <p className="text-[11px] text-amber-700">
-                          Sign in on the company website, then ask again to access your account data.
-                        </p>
+                        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-800">
+                          This action needs your customer account. Sign in on the company website, then ask again here.
+                        </div>
                       )
                     )}
                     {msg.citations && msg.citations.length > 0 && (
