@@ -32,6 +32,7 @@ export interface ConnectorResult {
 }
 
 const INDEXABLE_EXTENSIONS = new Set(['.md', '.txt', '.csv', '.json', '.pdf', '.xml', '.log', '.html']);
+const FLATFILE_EXTENSIONS = new Set(['.csv', '.md', '.txt', '.json', '.pdf']);
 
 function getExt(filename: string): string {
   const idx = filename.lastIndexOf('.');
@@ -45,6 +46,9 @@ export async function ingestFlatFile(file: {
   size: number;
 }): Promise<ConnectorResult> {
   const ext = getExt(file.originalname);
+  if (!FLATFILE_EXTENSIONS.has(ext) && file.mimetype !== 'application/pdf') {
+    throw new Error(`Unsupported file type — upload .csv, .md, .txt, .json, or .pdf.`);
+  }
   let extractedText = '';
 
   if (ext === '.pdf' || file.mimetype === 'application/pdf') {

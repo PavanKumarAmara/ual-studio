@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { auth, googleAuthProvider } from './lib/firebase';
 import {
@@ -241,6 +241,14 @@ function RelayMeshApp() {
     () => traces.filter((t) => t.projectId === activeProject?.id),
     [traces, activeProject]
   );
+
+  // Live mirrors so sequential batch ingests see fresh counts/brief even from a stale closure.
+  const sourcesRef = useRef(sources);
+  const chunksRef = useRef(chunks);
+  const briefRef = useRef(activeProject?.knowledgeBrief ?? '');
+  sourcesRef.current = sources;
+  chunksRef.current = chunks;
+  briefRef.current = activeProject?.knowledgeBrief ?? '';
 
   const activeMcpToolCount = useMemo(
     () =>
@@ -686,13 +694,22 @@ function RelayMeshApp() {
       createdAt: nowIso,
     }));
 
-    const nextSourceCount = projectSources.length + 1;
-    const nextChunkCount = projectChunks.length + newChunks.length;
+    const nextSourceCount =
+      sourcesRef.current.filter((s) => s.projectId === activeProject.id).length + 1;
+    const nextChunkCount =
+      chunksRef.current.filter((c) => c.projectId === activeProject.id).length + newChunks.length;
+    const mergedBrief = [briefRef.current, payload.knowledgeBrief]
+      .filter(Boolean)
+      .join('\n\n')
+      .slice(0, 6000);
+    sourcesRef.current = [newSource, ...sourcesRef.current];
+    chunksRef.current = [...newChunks, ...chunksRef.current];
+    briefRef.current = mergedBrief;
 
     if (user) {
       await createDataSourceWithChunks(newSource, newChunks);
       await updateProjectKnowledgeStatsDoc(activeOrg.id, activeProject.id, {
-        knowledgeBrief: payload.knowledgeBrief,
+        knowledgeBrief: mergedBrief,
         sourceCount: nextSourceCount,
         chunkCount: nextChunkCount,
       });
@@ -705,7 +722,7 @@ function RelayMeshApp() {
         p.id === activeProject.id
           ? {
               ...p,
-              knowledgeBrief: payload.knowledgeBrief,
+              knowledgeBrief: mergedBrief,
               sourceCount: nextSourceCount,
               chunkCount: nextChunkCount,
               updatedAt: nowIso,

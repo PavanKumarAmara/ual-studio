@@ -31,7 +31,7 @@ import type { BotRuntimeSnapshot, TraceChannel, TraceLog } from './src/types.ts'
 const PORT = Number(process.env.PORT || 3000);
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 async function startServer() {
@@ -305,29 +305,40 @@ async function startServer() {
   });
 
   // 6. Data Connector Ingestion Endpoints
-  app.post('/api/ingest/flatfile', upload.single('file'), async (req, res) => {
-    try {
-      const file = req.file;
-      if (!file) {
-        res.status(400).json({ error: 'Please select a file (.csv, .md, .txt, .json, or .pdf).' });
-        return;
-      }
-      const projectName = String(req.body?.projectName ?? 'Chatbot Service');
-      const result = await ingestFlatFile(file);
-      let knowledgeBrief = result.summary;
-      try {
-        knowledgeBrief = await synthesizeKnowledgeBrief(
-          projectName,
-          result.name,
-          result.chunks.map((c) => c.content)
-        );
-      } catch (err) {
-        console.warn('Knowledge brief synthesis fallback:', err instanceof Error ? err.message : err);
-      }
-      res.json({ ...result, knowledgeBrief });
-    } catch (err) {
-      res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to ingest file.' });
+  app.post('/api/ingest/flatfile', upload.array('files', 10), async (req, res) => {
+    const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    if (files.length === 0) {
+      res.status(400).json({ error: 'Please select at least one file (.csv, .md, .txt, .json, or .pdf).' });
+      return;
     }
+    const projectName = String(req.body?.projectName ?? 'Chatbot Service');
+    const results: Array<Record<string, unknown>> = [];
+    const errors: Array<{ name: string; error: string }> = [];
+
+    for (const file of files) {
+      try {
+        const result = await ingestFlatFile(file);
+        let knowledgeBrief = result.summary;
+        try {
+          knowledgeBrief = await synthesizeKnowledgeBrief(
+            projectName,
+            result.name,
+            result.chunks.map((c) => c.content)
+          );
+        } catch (err) {
+          console.warn('Knowledge brief synthesis fallback:', err instanceof Error ? err.message : err);
+        }
+        results.push({ ...result, knowledgeBrief });
+      } catch (err) {
+        errors.push({ name: file.originalname, error: err instanceof Error ? err.message : 'Failed to ingest file.' });
+      }
+    }
+
+    if (results.length === 0) {
+      res.status(400).json({ error: errors[0]?.error ?? 'Failed to ingest files.', errors });
+      return;
+    }
+    res.json({ results, errors });
   });
 
   app.post('/api/ingest/postgres', async (req, res) => {
@@ -449,6 +460,22 @@ async function startServer() {
         error: err instanceof Error ? err.message : 'Failed to generate customer insights.',
       });
     }
+  });
+
+  // Multer rejections (file size / count) as clean JSON instead of a 500 HTML page
+  app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: unknown }).code) : '';
+    if (code.startsWith('LIMIT_')) {
+      const message =
+        code === 'LIMIT_FILE_SIZE'
+          ? 'Each file must be 10 MB or smaller.'
+          : code === 'LIMIT_FILE_COUNT' || code === 'LIMIT_UNEXPECTED_FILE'
+            ? 'Upload up to 10 files at a time.'
+            : 'Upload rejected: too many files or form fields.';
+      res.status(400).json({ error: message });
+      return;
+    }
+    next(err);
   });
 
   // Vite middleware in dev, static dist in production

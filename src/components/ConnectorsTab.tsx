@@ -11,6 +11,7 @@ import {
   Search,
   ShieldCheck,
   UploadCloud,
+  X,
 } from 'lucide-react';
 import type { DataSource, KnowledgeChunk, Project, SourceType } from '../types';
 
@@ -53,8 +54,8 @@ const CONNECTOR_OPTIONS: Array<{
     id: 'flatfile',
     label: 'Flat Files',
     shortLabel: 'Flat File',
-    tagline: 'Upload CSV, MD, TXT, JSON or PDF',
-    securityNote: 'Up to 8 MB · Gemini multimodal PDF extraction',
+    tagline: 'Upload CSV, MD, TXT, JSON or PDF in batches',
+    securityNote: 'Up to 10 files · 10 MB each · Gemini multimodal PDF extraction',
     icon: FileUp,
   },
   {
@@ -98,7 +99,7 @@ export function ConnectorsTab({
   const [successMsg, setSuccessMsg] = useState('');
 
   // Flat file state
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   // PostgreSQL state
   const [pgUri, setPgUri] = useState('');
@@ -144,35 +145,80 @@ export function ConnectorsTab({
     setSuccessMsg('');
   };
 
+  const MAX_FILES = 10;
+  const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+  const handleFilesPicked = (picked: FileList | null) => {
+    setError('');
+    if (!picked || picked.length === 0) return;
+    const merged = [...selectedFiles];
+    for (const file of Array.from(picked)) {
+      if (merged.some((f) => f.name === file.name && f.size === file.size)) continue;
+      merged.push(file);
+    }
+    if (merged.length > MAX_FILES) {
+      setError(`Upload up to ${MAX_FILES} files at a time — extra files were not added.`);
+    }
+    const kept = merged.slice(0, MAX_FILES);
+    const oversized = kept.filter((f) => f.size > MAX_FILE_BYTES);
+    if (oversized.length > 0) {
+      setError(`Each file must be 10 MB or smaller: ${oversized.map((f) => f.name).join(', ')}.`);
+    }
+    setSelectedFiles(kept.filter((f) => f.size <= MAX_FILE_BYTES));
+  };
+
   const handleFlatFileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
-    if (!selectedFile) {
-      setError('Choose a .csv, .md, .txt, .json, or .pdf file to index.');
+    if (selectedFiles.length === 0) {
+      setError('Choose at least one .csv, .md, .txt, .json, or .pdf file to index.');
       return;
     }
 
     setBusy(true);
     try {
       const form = new FormData();
-      form.append('file', selectedFile);
+      for (const file of selectedFiles) form.append('files', file);
       form.append('projectName', project.name);
 
       const res = await fetch('/api/ingest/flatfile', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload ingestion failed.');
 
-      await onSourceIngested({
-        sourceType: 'flatfile',
-        name: data.name,
-        configSummary: data.configSummary,
-        summary: data.summary,
-        knowledgeBrief: data.knowledgeBrief,
-        chunks: data.chunks,
-      });
-      setSelectedFile(null);
-      setSuccessMsg(`Indexed "${data.name}" (${data.chunks.length} chunks added).`);
+      const results: Array<{
+        name: string;
+        configSummary: string;
+        summary: string;
+        knowledgeBrief: string;
+        chunks: Array<{ sourceName: string; content: string; tokenEstimate: number; embedding: number[] }>;
+      }> = data.results ?? [];
+      const failures: Array<{ name: string; error: string }> = data.errors ?? [];
+
+      let chunkTotal = 0;
+      for (const result of results) {
+        await onSourceIngested({
+          sourceType: 'flatfile',
+          name: result.name,
+          configSummary: result.configSummary,
+          summary: result.summary,
+          knowledgeBrief: result.knowledgeBrief,
+          chunks: result.chunks,
+        });
+        chunkTotal += result.chunks.length;
+      }
+      setSelectedFiles([]);
+      setSuccessMsg(
+        results.length === 1
+          ? `Indexed "${results[0].name}" (${chunkTotal} chunks added).`
+          : `Indexed ${results.length} files (${chunkTotal} chunks added).`
+      );
+      if (failures.length > 0) {
+        setError(
+          `${failures.length} file${failures.length > 1 ? 's' : ''} failed: ` +
+            failures.map((f) => `${f.name} — ${f.error}`).join('; ')
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Flat-file ingestion failed.');
     } finally {
@@ -551,7 +597,7 @@ export function ConnectorsTab({
                     htmlFor="flatfile-upload"
                     className="block text-xs font-medium text-slate-700"
                   >
-                    Upload Document (.csv, .md, .txt, .json, .pdf — max 8 MB)
+                    Upload Documents (.csv, .md, .txt, .json, .pdf — up to 10 files, 10 MB each)
                   </label>
                   <label
                     htmlFor="flatfile-upload"
@@ -559,7 +605,7 @@ export function ConnectorsTab({
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                        {selectedFile ? (
+                        {selectedFiles.length > 0 ? (
                           <FileText className="w-4 h-4 text-blue-600" aria-hidden="true" />
                         ) : (
                           <UploadCloud className="w-4 h-4" aria-hidden="true" />
@@ -567,37 +613,70 @@ export function ConnectorsTab({
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-slate-900 truncate">
-                          {selectedFile ? selectedFile.name : 'Choose a file to upload and index'}
+                          {selectedFiles.length > 0
+                            ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected`
+                            : 'Choose files to upload and index'}
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          {selectedFile
-                            ? `${formatBytes(selectedFile.size)} · Ready to analyze`
+                          {selectedFiles.length > 0
+                            ? `${formatBytes(selectedFiles.reduce((sum, f) => sum + f.size, 0))} total · Ready to analyze`
                             : 'Supported formats: CSV, Markdown, TXT, JSON, PDF'}
                         </p>
                       </div>
                     </div>
                     <span className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-md shrink-0">
-                      {selectedFile ? 'Change File' : 'Browse Files'}
+                      {selectedFiles.length > 0 ? 'Add More Files' : 'Browse Files'}
                     </span>
                     <input
                       id="flatfile-upload"
                       type="file"
+                      multiple
                       accept=".csv,.md,.txt,.json,.pdf"
-                      onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                      onChange={(e) => {
+                        handleFilesPicked(e.target.files);
+                        e.target.value = '';
+                      }}
                       className="sr-only"
                     />
                   </label>
+                  {selectedFiles.length > 0 && (
+                    <ul className="space-y-1">
+                      {selectedFiles.map((file, idx) => (
+                        <li
+                          key={`${file.name}-${file.size}-${idx}`}
+                          className="flex items-center justify-between gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-md"
+                        >
+                          <span className="text-xs text-slate-700 truncate">
+                            {file.name}
+                            <span className="ml-2 text-[11px] text-slate-400">{formatBytes(file.size)}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFiles((prev) => prev.filter((_, i) => i !== idx))}
+                            className="p-1 text-slate-400 hover:text-red-600 transition-colors shrink-0"
+                            aria-label={`Remove ${file.name}`}
+                          >
+                            <X className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    CSV and JSON files are normalized into structured knowledge rows; PDFs are parsed via Gemini multimodal extraction.
+                    Each file becomes its own knowledge source. CSV and JSON files are normalized into structured knowledge rows; PDFs are parsed via Gemini multimodal extraction.
                   </p>
                 </div>
                 <div className="pt-1">
                   <button
                     type="submit"
-                    disabled={busy}
+                    disabled={busy || selectedFiles.length === 0}
                     className="px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                   >
-                    {busy ? 'Analyzing & Indexing...' : 'Analyze & Index File'}
+                    {busy
+                      ? 'Analyzing & Indexing...'
+                      : selectedFiles.length > 1
+                        ? `Analyze & Index ${selectedFiles.length} Files`
+                        : 'Analyze & Index File'}
                   </button>
                 </div>
               </form>
