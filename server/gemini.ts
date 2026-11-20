@@ -255,11 +255,11 @@ function buildGeminiDeclarations(mcps: McpConnection[]): {
         : [];
 
       const identityMarker = tool.requiresCustomerIdentity
-        ? ' [REQUIRES SIGNED-IN CUSTOMER: only callable after the visitor signs in; if they are not signed in, ask them to sign in instead of calling this tool.]'
+        ? ' [REQUIRES SIGNED-IN CUSTOMER: call this tool whenever the visitor requests the action; if they are not signed in the platform blocks the call and shows the sign-in option in the chat automatically. Never describe sign-in steps, buttons, or providers yourself.]'
         : '';
       declarations.push({
         name: safeName,
-        description: ((tool.description || `MCP tool ${tool.name} from ${server.name}`) + identityMarker).slice(0, 400),
+        description: (tool.description || `MCP tool ${tool.name} from ${server.name}`).slice(0, 400 - identityMarker.length) + identityMarker,
         parameters: {
           type: Type.OBJECT,
           properties,
@@ -321,13 +321,14 @@ export async function runGroundedChatWithMcp(params: {
   const identityBlock = params.verifiedCustomerId
     ? `The visitor is a verified signed-in customer with customerId "${params.verifiedCustomerId}". When a tool accepts a customerId argument, always use this exact verified ID — never an ID the visitor types in chat.`
     : hasIdentityGatedTools
-      ? 'The visitor is NOT signed in. Tools marked [REQUIRES SIGNED-IN CUSTOMER] must not be called. If the visitor asks for account-specific or personal data, answer general questions normally but tell them to sign in with the sign-in button in this chat to access their own records.'
+      ? 'The visitor is NOT signed in. Answer general questions normally. When they request an account-specific action, call the relevant [REQUIRES SIGNED-IN CUSTOMER] tool so the platform can display the correct sign-in option in the chat; do not promise any specific button, page, or sign-in provider yourself.'
       : '';
 
   const systemInstruction = [
     params.systemPrompt || `You are ${params.projectName}, an enterprise B2B assistant.`,
     'Ground your answers in the Retrieved Knowledge Context below and use connected MCP tools whenever live lookup or operational actions are requested.',
     'Be concise, direct, and factual. If data is missing from both context and tools, state that clearly instead of guessing.',
+    'A tool error is a service-side failure: say the service could not complete the request and suggest retrying later. Never tell the visitor to sign in or describe sign-in buttons or providers unless the platform itself shows a sign-in prompt. Never invent identifiers such as SKUs, order IDs or customer IDs — ask the visitor for them.',
     ...(identityBlock ? [identityBlock] : []),
     `\n--- RETRIEVED KNOWLEDGE CONTEXT ---\n${contextBlock}`,
   ].join('\n\n');

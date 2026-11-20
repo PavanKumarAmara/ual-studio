@@ -13,10 +13,11 @@ interface McpTabProps {
     tools: McpTool[];
   }) => Promise<void>;
   onUpdateMcp: (mcpId: string, patch: Pick<McpConnection, 'enabled' | 'tools' | 'status'>) => Promise<void>;
+  onReplaceToken: (mcpId: string, authTokenRaw: string) => Promise<void>;
   onDeleteMcp: (mcpId: string) => Promise<void>;
 }
 
-export function McpTab({ mcps, onAddMcp, onUpdateMcp, onDeleteMcp }: McpTabProps) {
+export function McpTab({ mcps, onAddMcp, onUpdateMcp, onReplaceToken, onDeleteMcp }: McpTabProps) {
   const [name, setName] = useState('');
   const [endpointUrl, setEndpointUrl] = useState('');
   const [transport, setTransport] = useState<McpTransport>('streamable_http');
@@ -24,6 +25,8 @@ export function McpTab({ mcps, onAddMcp, onUpdateMcp, onDeleteMcp }: McpTabProps
   const [authTokenRaw, setAuthTokenRaw] = useState('');
   const [busy, setBusy] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [tokenDrafts, setTokenDrafts] = useState<Record<string, string>>({});
+  const [tokenBusyId, setTokenBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [statusNotice, setStatusNotice] = useState('');
 
@@ -120,6 +123,50 @@ export function McpTab({ mcps, onAddMcp, onUpdateMcp, onDeleteMcp }: McpTabProps
       });
     } finally {
       setRefreshingId(null);
+    }
+  };
+
+  const handleReplaceToken = async (mcp: McpConnection) => {
+    const draft = (tokenDrafts[mcp.id] ?? '').trim();
+    if (!draft) {
+      setError('Enter the full auth header value (e.g. Bearer your_token) before updating.');
+      return;
+    }
+    setTokenBusyId(mcp.id);
+    setError('');
+    try {
+      const res = await fetch('/api/mcp/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpointUrl: mcp.endpointUrl,
+          authHeaderName: mcp.authHeaderName,
+          authToken: draft,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'The MCP server rejected this token.');
+
+      const existingToggleMap = new Map(mcp.tools.map((t) => [t.name, t.enabled]));
+      const existingIdentityMap = new Map(mcp.tools.map((t) => [t.name, Boolean(t.requiresCustomerIdentity)]));
+      const mergedTools: McpTool[] = (data.tools ?? []).map((t: McpTool) => ({
+        ...t,
+        enabled: existingToggleMap.has(t.name) ? Boolean(existingToggleMap.get(t.name)) : true,
+        requiresCustomerIdentity: existingIdentityMap.get(t.name) ?? false,
+      }));
+
+      await onReplaceToken(mcp.id, draft);
+      await onUpdateMcp(mcp.id, {
+        enabled: mcp.enabled,
+        status: 'connected',
+        tools: mergedTools,
+      });
+      setTokenDrafts((prev) => ({ ...prev, [mcp.id]: '' }));
+      setStatusNotice('Token verified against the MCP server and pushed to the live runtime.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update token.');
+    } finally {
+      setTokenBusyId(null);
     }
   };
 
@@ -345,6 +392,26 @@ export function McpTab({ mcps, onAddMcp, onUpdateMcp, onDeleteMcp }: McpTabProps
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
+              </div>
+
+              <div className="px-6 py-2.5 border-b border-slate-200 flex flex-col sm:flex-row gap-2 sm:items-center">
+                <input
+                  type="password"
+                  value={tokenDrafts[mcp.id] ?? ''}
+                  onChange={(e) => setTokenDrafts((prev) => ({ ...prev, [mcp.id]: e.target.value }))}
+                  placeholder={`Replace auth token — saved: ${mcp.authTokenMasked || 'none'}`}
+                  aria-label={`Replace auth token for ${mcp.name}`}
+                  title="Tokens are held in runtime memory only; re-enter here after a server restart."
+                  className="flex-1 px-3 py-1.5 text-xs font-mono border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleReplaceToken(mcp)}
+                  disabled={tokenBusyId === mcp.id}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {tokenBusyId === mcp.id ? 'Verifying…' : 'Update token'}
+                </button>
               </div>
 
               <div className="px-6 py-2.5 bg-amber-50/60 border-b border-slate-200 text-[11px] text-slate-600 leading-relaxed">

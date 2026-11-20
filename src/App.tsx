@@ -790,6 +790,23 @@ function RelayMeshApp() {
     );
   };
 
+  const handleReplaceMcpToken = async (mcpId: string, authTokenRaw: string) => {
+    if (!activeOrg || !activeProject) return;
+    setMcps((prev) =>
+      prev.map((m) =>
+        m.id === mcpId
+          ? {
+              ...m,
+              authTokenRaw,
+              authTokenMasked: maskToken(authTokenRaw),
+              status: 'connected',
+              updatedAt: new Date().toISOString(),
+            }
+          : m
+      )
+    );
+  };
+
   const handleDeleteMcp = async (mcpId: string) => {
     if (!activeOrg || !activeProject) return;
     if (user) {
@@ -970,6 +987,7 @@ function RelayMeshApp() {
                   mcps={projectMcps}
                   onAddMcp={handleAddMcp}
                   onUpdateMcp={handleUpdateMcp}
+                  onReplaceToken={handleReplaceMcpToken}
                   onDeleteMcp={handleDeleteMcp}
                 />
               )}

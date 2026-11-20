@@ -90,6 +90,7 @@ export async function fetchOrgProjects(orgId: string, uid: string): Promise<Proj
         apiKey: String(data.apiKey ?? ''),
         identitySecret: String(data.identitySecret ?? ''),
         loginUrl: String(data.loginUrl ?? ''),
+        hostedSignIn: data.hostedSignIn === true,
         storePage: data.storePage ?? undefined,
         status: data.status === 'paused' ? 'paused' : 'active',
         theme: {
