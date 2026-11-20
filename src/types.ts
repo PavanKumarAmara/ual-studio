@@ -51,6 +51,7 @@ export interface Project {
   apiKey: string;
   identitySecret: string;
   loginUrl: string;
+  hostedSignIn?: boolean;
   status: 'active' | 'paused';
   theme: ChatTheme;
   storePage?: StorePage;

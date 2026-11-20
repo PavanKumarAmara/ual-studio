@@ -199,13 +199,14 @@ export async function updateProjectApiKeyDoc(orgId: string, projectId: string, a
 export async function updateProjectIdentityDoc(
   orgId: string,
   projectId: string,
-  patch: { identitySecret: string; loginUrl: string }
+  patch: { identitySecret: string; loginUrl: string; hostedSignIn: boolean }
 ): Promise<void> {
   const path = `organizations/${orgId}/projects/${projectId}`;
   try {
     await updateDoc(doc(db, 'organizations', orgId, 'projects', projectId), {
       identitySecret: clampStr(patch.identitySecret, 120),
       loginUrl: clampStr(patch.loginUrl, 500),
+      hostedSignIn: patch.hostedSignIn === true,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {

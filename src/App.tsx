@@ -54,6 +54,7 @@ import { ThemeStudioTab } from './components/ThemeStudioTab';
 import { ObservabilityTab } from './components/ObservabilityTab';
 import { GcpArchitectureTab } from './components/GcpArchitectureTab';
 import { HostedChatPage } from './components/HostedChatPage';
+import { CustomerSignInPage } from './components/CustomerSignInPage';
 import { StorePageView } from './components/StorePageView';
 import { StorePageTab } from './components/StorePageTab';
 
@@ -68,6 +69,15 @@ function parseHostedRoute(pathname: string): { orgSlug: string; botSlug: string 
 
 function parseStoreRoute(pathname: string): { orgSlug: string; botSlug: string } | null {
   const match = /^\/s\/([^/]+)\/([^/]+)\/?$/.exec(pathname);
+  if (!match) return null;
+  return {
+    orgSlug: decodeURIComponent(match[1]),
+    botSlug: decodeURIComponent(match[2]),
+  };
+}
+
+function parseSignInRoute(pathname: string): { orgSlug: string; botSlug: string } | null {
+  const match = /^\/customer-signin\/([^/]+)\/([^/]+)\/?$/.exec(pathname);
   if (!match) return null;
   return {
     orgSlug: decodeURIComponent(match[1]),
@@ -131,6 +141,7 @@ function RelayMeshApp() {
 
   const hostedRoute = useMemo(() => parseHostedRoute(pathname), [pathname]);
   const storeRoute = useMemo(() => parseStoreRoute(pathname), [pathname]);
+  const signInRoute = useMemo(() => parseSignInRoute(pathname), [pathname]);
 
   useEffect(() => {
     const onPop = () => setPathname(window.location.pathname);
@@ -597,12 +608,12 @@ function RelayMeshApp() {
     setProjects((prev) => prev.map((p) => patched.find((x) => x.id === p.id) ?? p));
     if (user) {
       for (const p of patched) {
-        void updateProjectIdentityDoc(p.orgId, p.id, { identitySecret: p.identitySecret, loginUrl: p.loginUrl });
+        void updateProjectIdentityDoc(p.orgId, p.id, { identitySecret: p.identitySecret, loginUrl: p.loginUrl, hostedSignIn: p.hostedSignIn ?? false });
       }
     }
   }, [projects, user]);
 
-  const handleSaveIdentity = async (patch: { identitySecret: string; loginUrl: string }) => {
+  const handleSaveIdentity = async (patch: { identitySecret: string; loginUrl: string; hostedSignIn: boolean }) => {
     if (!activeOrg || !activeProject) return;
     if (user) {
       await updateProjectIdentityDoc(activeOrg.id, activeProject.id, patch);
@@ -816,6 +827,10 @@ function RelayMeshApp() {
   );
 
   // Route 1: Standalone Public Hosted Customer Chat Page (/c/:orgSlug/:botSlug)
+  if (signInRoute) {
+    return <CustomerSignInPage orgSlug={signInRoute.orgSlug} botSlug={signInRoute.botSlug} />;
+  }
+
   if (hostedRoute) {
     return (
       <HostedChatPage

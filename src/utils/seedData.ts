@@ -39,6 +39,7 @@ export const SEED_PROJECTS: Project[] = [
     apiKey: 'sk_live_rm_meridian_freight_9k4x2p8v7n1q',
     identitySecret: 'idsec_meridian_freight_demo_7f3k9q2x5v8n',
     loginUrl: 'https://meridian-logistics.example.com/login',
+    hostedSignIn: true,
     status: 'active',
     theme: {
       primaryColor: '#2563EB',

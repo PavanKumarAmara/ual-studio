@@ -48,6 +48,20 @@ async function getDb(): Promise<FirebaseFirestore.Firestore | null> {
   }
 }
 
+export async function getAdminApp(): Promise<import('firebase-admin/app').App | null> {
+  if (loaderDisabled) return null;
+  try {
+    const { initializeApp, getApps } = await import('firebase-admin/app');
+    const cfg = readAppletConfig();
+    return (
+      getApps()[0] ??
+      initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || cfg.projectId || undefined })
+    );
+  } catch {
+    return null;
+  }
+}
+
 function tsToIso(val: unknown): string {
   if (val && typeof (val as { toDate?: unknown }).toDate === 'function') {
     return (val as { toDate: () => Date }).toDate().toISOString();

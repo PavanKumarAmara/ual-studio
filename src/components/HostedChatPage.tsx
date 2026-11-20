@@ -46,6 +46,7 @@ interface PublicBotPayload {
     theme: ChatTheme;
     sourceCount: number;
     chunkCount: number;
+    hostedSignIn?: boolean;
   };
 }
 
@@ -331,6 +332,18 @@ export function HostedChatPage({
       setSending(false);
     }
   };
+
+  // Once a signed identity arrives (popup or host handoff), resume the request that was
+  // blocked by the sign-in gate so the visitor does not have to retype it.
+  const prevIdentityRef = useRef<CustomerIdentityClaim | null>(customerIdentity);
+  useEffect(() => {
+    const previous = prevIdentityRef.current;
+    prevIdentityRef.current = customerIdentity;
+    if (previous || !customerIdentity) return;
+    const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    if (lastAssistant?.loginRequired && lastUser) void sendMessage(lastUser.content);
+  }, [customerIdentity, messages, sendMessage]);
 
   if (loading) {
     return (
@@ -625,7 +638,22 @@ export function HostedChatPage({
                 {msg.role === 'assistant' && (
                   <div className="mt-1.5 space-y-1 max-w-[85%]">
                     {msg.loginRequired && (
-                      msg.loginRequired.loginUrl ? (
+                      bot.project.hostedSignIn ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            window.open(
+                              `/customer-signin/${orgSlug}/${botSlug}`,
+                              'ual-customer-signin',
+                              'width=480,height=640'
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-lg shadow-sm"
+                          style={{ backgroundColor: theme.primaryColor }}
+                        >
+                          Sign in with Google
+                        </button>
+                      ) : msg.loginRequired.loginUrl ? (
                         <button
                           type="button"
                           onClick={() => window.open(msg.loginRequired!.loginUrl, '_blank', 'noopener')}

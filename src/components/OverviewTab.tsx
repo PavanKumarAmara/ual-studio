@@ -17,7 +17,7 @@ interface OverviewTabProps {
   traceCount: number;
   onRotateKey: () => Promise<void>;
   onSavePrompt: (systemPrompt: string, status: 'active' | 'paused') => Promise<void>;
-  onSaveIdentity: (patch: { identitySecret: string; loginUrl: string }) => Promise<void>;
+  onSaveIdentity: (patch: { identitySecret: string; loginUrl: string; hostedSignIn: boolean }) => Promise<void>;
   onRecordTrace: (trace: TraceLog) => void;
 }
 
@@ -39,6 +39,7 @@ export function OverviewTab({
   const [showKey, setShowKey] = useState(false);
   const [showIdentitySecret, setShowIdentitySecret] = useState(false);
   const [loginUrlInput, setLoginUrlInput] = useState(project.loginUrl ?? '');
+  const [hostedSignInInput, setHostedSignInInput] = useState(project.hostedSignIn ?? false);
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [identityNotice, setIdentityNotice] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -148,7 +149,7 @@ export function OverviewTab({
     setSavingIdentity(true);
     setIdentityNotice('');
     try {
-      await onSaveIdentity({ identitySecret, loginUrl: loginUrlInput.trim() });
+      await onSaveIdentity({ identitySecret, loginUrl: loginUrlInput.trim(), hostedSignIn: hostedSignInInput });
       setIdentityNotice('Identity settings saved.');
     } catch {
       setIdentityNotice('Failed to save identity settings.');
@@ -406,6 +407,18 @@ print(resp.json())`,
                     {savingIdentity ? 'Saving…' : 'Save'}
                   </button>
                 </div>
+                <label className="flex items-start gap-2 pt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hostedSignInInput}
+                    onChange={(e) => setHostedSignInInput(e.target.checked)}
+                    className="mt-0.5 w-3.5 h-3.5 accent-blue-600"
+                  />
+                  <span className="text-xs text-slate-600 leading-snug">
+                    <span className="font-medium text-slate-700">Let UAL handle customer sign-in (Google).</span>{' '}
+                    When a tool needs customer identity, visitors sign in with Google in a UAL-hosted popup — no code or secret on your website. Turn off to use your own login page and signed handoff instead.
+                  </span>
+                </label>
                 <p className="text-xs text-slate-500">
                   Anonymous visitors keep chatting normally. When a question needs their private data, the widget shows a sign-in button pointing here.
                 </p>

@@ -17,7 +17,8 @@ import {
   ingestWebsiteSource,
 } from './server/connectors.ts';
 import { discoverMcpTools, handleDemoMcpJsonRpc } from './server/mcp.ts';
-import { verifyCustomerIdentity } from './server/identity.ts';
+import { signCustomerIdentity, verifyCustomerIdentity } from './server/identity.ts';
+import { getAdminApp } from './server/firestoreRuntime.ts';
 import {
   appendRuntimeTrace,
   getRuntimeTraces,
@@ -97,11 +98,50 @@ async function startServer() {
         theme: bot.project.theme,
         sourceCount: bot.project.sourceCount,
         chunkCount: bot.project.chunkCount,
+        hostedSignIn: bot.project.hostedSignIn === true,
       },
       mcpToolCount: bot.mcps
         .filter((m) => m.enabled && m.status === 'connected')
         .reduce((sum, m) => sum + m.tools.filter((t) => t.enabled).length, 0),
     });
+  });
+
+  // 3a. UAL-hosted customer sign-in: verify a Google ID token and issue the signed
+  // identity claim ourselves, so tenants need zero backend code for gated tools.
+  app.post('/api/public/bots/:orgSlug/:botSlug/identity/google', async (req, res) => {
+    const bot = await resolveBotSnapshot(req.params.orgSlug, req.params.botSlug);
+    if (!bot) {
+      res.status(404).json({ error: 'Chatbot service not found.' });
+      return;
+    }
+    if (!bot.project.hostedSignIn) {
+      res.status(403).json({ error: 'Hosted customer sign-in is not enabled for this bot.' });
+      return;
+    }
+    const secret = bot.project.identitySecret ?? '';
+    if (!secret) {
+      res.status(400).json({ error: 'Customer identity secret is not configured for this bot.' });
+      return;
+    }
+    const idToken = String(req.body?.idToken ?? '');
+    if (!idToken) {
+      res.status(400).json({ error: 'Missing Google ID token.' });
+      return;
+    }
+    const app = await getAdminApp();
+    if (!app) {
+      res.status(503).json({ error: 'Identity verification is unavailable on this deployment.' });
+      return;
+    }
+    try {
+      const { getAuth } = await import('firebase-admin/auth');
+      const decoded = await getAuth(app).verifyIdToken(idToken);
+      const customerId = String(decoded.email ?? decoded.uid).slice(0, 128);
+      const ts = Date.now();
+      res.json({ customerId, sig: signCustomerIdentity(secret, customerId, ts), ts });
+    } catch {
+      res.status(401).json({ error: 'Google sign-in could not be verified. Please try again.' });
+    }
   });
 
   // 3b. Public Store Page Config (hosted storefront /s/:orgSlug/:botSlug — safe fields only)
