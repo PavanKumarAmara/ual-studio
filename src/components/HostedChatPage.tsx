@@ -50,6 +50,9 @@ interface PublicBotPayload {
   };
 }
 
+// Mirrors MAX_SIGNATURE_AGE_MS in server/identity.ts
+const CLAIM_TTL_MS = 15 * 60 * 1000;
+
 export function HostedChatPage({
   orgSlug,
   botSlug,
@@ -94,7 +97,9 @@ export function HostedChatPage({
     }
     try {
       const stored = sessionStorage.getItem(storageKey);
-      return stored ? (JSON.parse(stored) as CustomerIdentityClaim) : null;
+      if (!stored) return null;
+      const claim = JSON.parse(stored) as CustomerIdentityClaim;
+      return Date.now() - claim.ts <= CLAIM_TTL_MS ? claim : null;
     } catch {
       return null;
     }
@@ -343,7 +348,7 @@ export function HostedChatPage({
   useEffect(() => {
     const previous = prevIdentityRef.current;
     prevIdentityRef.current = customerIdentity;
-    if (previous || !customerIdentity) return;
+    if (!customerIdentity || previous === customerIdentity) return;
     const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
     const lastUser = [...messages].reverse().find((m) => m.role === 'user');
     if (lastAssistant?.loginRequired && lastUser) void sendMessage(lastUser.content);
