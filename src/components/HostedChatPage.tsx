@@ -106,7 +106,11 @@ export function HostedChatPage({
   // reloading the widget. The HMAC signature is still verified server-side on every chat.
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (window.parent === window || event.source !== window.parent) return;
+      // Host handoff comes from the embedding parent; the sign-in popup is a
+      // same-origin child window, not the parent, so accept it by origin.
+      const fromHost = window.parent !== window && event.source === window.parent;
+      const fromSignInPopup = event.origin === window.location.origin;
+      if (!fromHost && !fromSignInPopup) return;
       const data = event.data as { type?: unknown; customerId?: unknown; sig?: unknown; ts?: unknown } | null;
       if (!data || data.type !== 'ual-identity') return;
       const customerId = typeof data.customerId === 'string' ? data.customerId : '';
