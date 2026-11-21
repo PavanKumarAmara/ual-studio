@@ -106,7 +106,7 @@ service cloud.firestore {
         data.keys().hasOnly([
           'orgId', 'ownerId', 'name', 'slug', 'description', 'systemPrompt',
           'knowledgeBrief', 'apiKey', 'status', 'theme', 'chunkCount', 'sourceCount',
-          'identitySecret', 'loginUrl', 'storePage',
+          'identitySecret', 'loginUrl', 'hostedSignIn', 'storePage',
           'createdAt', 'updatedAt'
         ]) &&
         data.orgId == orgId &&
@@ -120,6 +120,7 @@ service cloud.firestore {
         data.apiKey is string && data.apiKey.size() >= 16 && data.apiKey.size() <= 120 &&
         (!('identitySecret' in data) || (data.identitySecret is string && data.identitySecret.size() >= 16 && data.identitySecret.size() <= 120)) &&
         (!('loginUrl' in data) || (data.loginUrl is string && data.loginUrl.size() <= 500)) &&
+        (!('hostedSignIn' in data) || data.hostedSignIn is bool) &&
         (!('storePage' in data) || isValidStorePage(data.storePage)) &&
         data.status in ['active', 'paused'] &&
         isValidTheme(data.theme) &&
@@ -274,8 +275,8 @@ service cloud.firestore {
             incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'systemPrompt', 'theme', 'status', 'updatedAt']) ||
             // Action: Rotate API key
             incoming().diff(existing()).affectedKeys().hasOnly(['apiKey', 'updatedAt']) ||
-            // Action: Configure customer identity (HMAC secret & login URL)
-            incoming().diff(existing()).affectedKeys().hasOnly(['identitySecret', 'loginUrl', 'updatedAt']) ||
+            // Action: Configure customer identity (HMAC secret, login URL, hosted sign-in)
+            incoming().diff(existing()).affectedKeys().hasOnly(['identitySecret', 'loginUrl', 'hostedSignIn', 'updatedAt']) ||
             // Action: Edit hosted store page
             incoming().diff(existing()).affectedKeys().hasOnly(['storePage', 'updatedAt']) ||
             // Action: Sync knowledge stats & brief

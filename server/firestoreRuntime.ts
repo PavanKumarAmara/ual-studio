@@ -99,6 +99,7 @@ export async function loadBotSnapshotFromFirestore(
     apiKey: String(p.apiKey ?? ''),
     identitySecret: String(p.identitySecret ?? ''),
     loginUrl: String(p.loginUrl ?? ''),
+    hostedSignIn: p.hostedSignIn === true,
     status: p.status === 'paused' ? 'paused' : 'active',
     theme: p.theme,
     storePage: p.storePage ?? undefined,

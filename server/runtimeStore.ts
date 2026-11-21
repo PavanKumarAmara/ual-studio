@@ -56,8 +56,15 @@ export function syncBotSnapshot(snapshot: BotRuntimeSnapshot): void {
     return prev?.authTokenRaw ? { ...mcp, authTokenRaw: prev.authTokenRaw } : mcp;
   });
 
+  // Older console bundles omit hostedSignIn; never let such a sync wipe the toggle
+  const mergedProject =
+    snapshot.project.hostedSignIn === undefined && typeof existing?.project.hostedSignIn === 'boolean'
+      ? { ...snapshot.project, hostedSignIn: existing.project.hostedSignIn }
+      : snapshot.project;
+
   botRegistry.set(key, {
     ...snapshot,
+    project: mergedProject,
     mcps: mergedMcps,
   });
   loadedAt.set(key, Date.now());
